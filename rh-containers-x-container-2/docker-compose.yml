@@ -11,8 +11,7 @@ services:
     restart: unless-stopped
     ports:
       - "19223:9222"
-      - "17902:7900"
-      - "18002:18000"
+      - "18102:18000"
     environment:
       SE_NODE_MAX_SESSIONS: "1"
       SE_VNC_NO_PASSWORD: "1"
