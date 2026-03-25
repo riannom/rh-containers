@@ -1,0 +1,20 @@
+manifestVersion: 1.1
+id: rh-containers-x-container-2
+name: X Container 2
+tagline: Headless Chrome browser for X automation
+category: developer
+version: "1.0.0"
+port: 18002
+description: >-
+  Self-contained headless Chrome container for X/Twitter automation.
+  Runs Chrome with noVNC for visual monitoring and a WebSocket task
+  server for remote job dispatch.
+website: https://github.com/riannom/rh-containers
+support: https://github.com/riannom/rh-containers
+gallery: []
+releaseNotes: ""
+developer: researchhub
+repo: https://github.com/riannom/rh-containers
+path: ""
+defaultUsername: ""
+defaultPassword: ""

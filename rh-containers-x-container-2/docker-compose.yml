@@ -1,0 +1,26 @@
+services:
+  app_proxy:
+    environment:
+      APP_HOST: rh-containers-x-container-2_chrome_1
+      APP_PORT: "7900"
+      PROXY_AUTH_ADD: "false"
+
+  chrome:
+    image: x-automation-chrome:latest
+    restart: unless-stopped
+    ports:
+      - "19223:9222"
+      - "17902:7900"
+      - "18002:18000"
+    environment:
+      SE_NODE_MAX_SESSIONS: "1"
+      SE_VNC_NO_PASSWORD: "1"
+      SE_SCREEN_WIDTH: "1440"
+      SE_SCREEN_HEIGHT: "900"
+      SE_START_VNC: "true"
+      SE_START_NO_VNC: "true"
+      X_CONTAINER_INSTANCE: "2"
+      X_AUTOMATION_ALLOW_MUTATIONS: "1"
+    volumes:
+      - ${APP_DATA_DIR}/data/chrome-profile:/home/seluser/chrome-profile
+    shm_size: "2g"
