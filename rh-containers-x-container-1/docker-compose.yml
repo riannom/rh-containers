@@ -11,6 +11,7 @@ services:
     restart: unless-stopped
     ports:
       - "19222:9222"
+      - "17901:7900"
       - "18101:18000"
     environment:
       SE_NODE_MAX_SESSIONS: "1"
