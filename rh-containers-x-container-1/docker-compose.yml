@@ -7,7 +7,6 @@ services:
 
   chrome:
     image: x-automation-chrome:latest
-    pull_policy: never
     restart: unless-stopped
     ports:
       - "19222:9222"
