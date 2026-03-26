@@ -101,6 +101,17 @@ async def collect_source(browser: ChromeMCPBrowser, label: str, url: str, seen_i
             source["profiles"] = collect_profiles_from_posts(posts)
             source["post_count"] = len(posts)
             source["status"] = "ok"
+
+            # Diagnostic: capture page state when a list yields 0 posts
+            if not posts and "/lists/" in url:
+                snippet = body[:500] if body else "(empty page)"
+                source["diagnostic"] = {
+                    "page_snippet": snippet,
+                    "page_length": len(body) if body else 0,
+                    "article_count": await browser.evaluate("() => document.querySelectorAll('article').length"),
+                    "warning": f"List '{label}' loaded but returned 0 posts after {scroll_budget} scrolls",
+                }
+                print(f"WARNING: list '{label}' returned 0 posts — page_len={len(body)}, articles={source['diagnostic']['article_count']}", flush=True)
             return source
         except Exception as error:
             last_error = error
