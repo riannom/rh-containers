@@ -7,7 +7,7 @@ import traceback
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from mcp_browser import ChromeMCPBrowser, looks_challenged, looks_logged_in, jitter
+from mcp_browser import ChromeMCPBrowser, looks_challenged, looks_logged_in, looks_rate_limited, jitter
 
 
 OUT_DIR = Path(os.environ.get("X_AUTOMATION_OUT_DIR", Path(__file__).resolve().parent.parent / "out"))
@@ -122,6 +122,10 @@ async def add_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) -> 
         timeout=PROFILE_WAIT_TIMEOUT_MS,
     )
     payload = await browser.get_page_payload(2500)
+    if looks_rate_limited(payload["text"], payload.get("url", "")):
+        item["status"] = "rate-limited"
+        item["rate_limited"] = True
+        return item
     if looks_challenged(payload["text"]):
         item["status"] = "challenge-detected"
         return item
@@ -280,6 +284,13 @@ async def main() -> None:
             await browser.navigate("https://x.com/home")
             await browser.wait_for_text(["For you", "Following", "Sign in to X"], timeout=20000)
             home = await browser.get_page_payload(3000)
+            if looks_rate_limited(home["text"], home.get("url", "")):
+                result["status"] = "error"
+                result["error"] = "rate-limited"
+                result["rate_limited"] = True
+                write_json("manage_list.json", result)
+                print(json.dumps(result))
+                return
             if looks_challenged(home["text"]):
                 result["status"] = "error"
                 result["error"] = "challenge-detected"
@@ -303,6 +314,14 @@ async def main() -> None:
             await browser.navigate(LIST_URL)
             await browser.wait_for_text(["Edit List", "Waiting for posts", "Members"], timeout=20000)
             list_payload = await browser.get_page_payload(2500)
+            if looks_rate_limited(list_payload["text"], list_payload.get("url", "")):
+                result["status"] = "error"
+                result["error"] = "rate-limited"
+                result["rate_limited"] = True
+                result["phase"] = "list-page"
+                write_json("manage_list.json", result)
+                print(json.dumps(result))
+                return
             if looks_challenged(list_payload["text"]):
                 result["status"] = "error"
                 result["error"] = "challenge-detected"
@@ -336,6 +355,12 @@ async def main() -> None:
                 elif item["status"] == "private-account":
                     item.update(mark_private_account(handle, list_name, LIST_URL))
                     result["skipped"].append(item)
+                elif item["status"] == "rate-limited":
+                    result["status"] = "error"
+                    result["error"] = "rate-limited"
+                    result["rate_limited"] = True
+                    result["failed"].append(item)
+                    break
                 elif item["status"] == "challenge-detected":
                     result["status"] = "error"
                     result["error"] = "challenge-detected"

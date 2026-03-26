@@ -1,0 +1,52 @@
+[
+  {
+    "browser_id": "umbrel-x1",
+    "browser_url": "http://umbrel.local:19222",
+    "ws_url": "ws://umbrel.local:18101/ws",
+    "transport": "websocket",
+    "enabled": true,
+    "priority": 100,
+    "max_concurrent_leases": 1,
+    "role": "umbrel-worker",
+    "expected_x_account": "narusegawa325",
+    "allows_follow": true,
+    "allows_list_mutation": true,
+    "allows_feed_collection": true,
+    "allows_relationship_collection": true,
+    "allows_discovery": true,
+    "allows_avatar_collection": true,
+    "canonical_lists": [
+      "tier-a-macro",
+      "tier-a-tactical",
+      "tier-b-all",
+      "tier-c-all"
+    ],
+    "ip_class": "umbrel-lan",
+    "tags": ["chrome", "container", "umbrel"]
+  },
+  {
+    "browser_id": "umbrel-x2",
+    "browser_url": "http://umbrel.local:19223",
+    "ws_url": "ws://umbrel.local:18102/ws",
+    "transport": "websocket",
+    "enabled": true,
+    "priority": 100,
+    "max_concurrent_leases": 1,
+    "role": "umbrel-worker",
+    "expected_x_account": "audreyxsammie",
+    "allows_follow": true,
+    "allows_list_mutation": true,
+    "allows_feed_collection": true,
+    "allows_relationship_collection": true,
+    "allows_discovery": true,
+    "allows_avatar_collection": true,
+    "canonical_lists": [
+      "tier-a-macro",
+      "tier-a-tactical",
+      "tier-b-all",
+      "tier-c-all"
+    ],
+    "ip_class": "umbrel-lan",
+    "tags": ["chrome", "container", "umbrel"]
+  }
+]

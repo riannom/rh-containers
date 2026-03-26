@@ -25,7 +25,8 @@ RUN npm install -g chrome-devtools-mcp
 # Replace Selenium standalone with direct Google Chrome + CDP + socat proxy.
 COPY config/chrome-direct.conf /etc/supervisor/conf.d/selenium.conf
 COPY scripts/start-chrome-direct.sh /opt/bin/start-chrome-direct.sh
-RUN chmod +x /opt/bin/start-chrome-direct.sh
+COPY scripts/fix-permissions.sh /opt/bin/fix-permissions.sh
+RUN chmod +x /opt/bin/start-chrome-direct.sh /opt/bin/fix-permissions.sh
 
 # Copy x-automation agent, runner, and WS server into the container.
 # The WS server wraps the agent's task dispatch over WebSocket so the

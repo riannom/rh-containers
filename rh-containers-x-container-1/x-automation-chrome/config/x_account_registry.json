@@ -1,0 +1,36 @@
+{
+  "accounts": [
+    {
+      "x_account_handle": "narusegawa325",
+      "role": "primary-operator",
+      "allows_follow": true,
+      "allows_list_mutation": true,
+      "allows_feed_collection": true,
+      "allows_relationship_collection": true,
+      "allows_discovery": true,
+      "allows_avatar_collection": true,
+      "canonical_lists": [
+        "tier-a-macro",
+        "tier-a-tactical",
+        "tier-b-all",
+        "tier-c-all"
+      ]
+    },
+    {
+      "x_account_handle": "audreyxsammie",
+      "role": "umbrel-worker",
+      "allows_follow": true,
+      "allows_list_mutation": true,
+      "allows_feed_collection": true,
+      "allows_relationship_collection": true,
+      "allows_discovery": true,
+      "allows_avatar_collection": true,
+      "canonical_lists": [
+        "tier-a-macro",
+        "tier-a-tactical",
+        "tier-b-all",
+        "tier-c-all"
+      ]
+    }
+  ]
+}

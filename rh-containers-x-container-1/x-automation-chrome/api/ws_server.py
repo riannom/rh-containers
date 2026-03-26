@@ -58,6 +58,9 @@ CDP_URL = os.environ.get("CDP_URL", "http://127.0.0.1:9222")
 _active_task: dict | None = None
 _active_task_future: asyncio.Task | None = None
 
+# Rate limit tracking — set when a task result indicates rate limiting
+_rate_limited_since: str | None = None  # ISO timestamp or None
+
 
 # ---------------------------------------------------------------------------
 # Health probe
@@ -71,6 +74,8 @@ def _probe_health() -> dict:
         "session": "unknown",
         "account": None,
         "active_task": _active_task.get("task_id") if _active_task else None,
+        "rate_limited": _rate_limited_since is not None,
+        "rate_limited_since": _rate_limited_since,
     }
     try:
         raw = subprocess.check_output(
@@ -85,12 +90,37 @@ def _probe_health() -> dict:
     return health
 
 
+def _check_rate_limit(result: dict) -> None:
+    """Check a task result for rate limit signals and update container state."""
+    global _rate_limited_since
+    import re
+
+    signals = [
+        result.get("error", ""),
+        result.get("status", ""),
+        # Check nested error fields from manage_list/collect_feeds results
+        *[str(item.get("error", "")) for item in result.get("failed", []) if isinstance(item, dict)],
+    ]
+    text = " ".join(str(s) for s in signals)
+
+    if re.search(r"rate.limit|too many requests|temporarily limited", text, re.I):
+        if _rate_limited_since is None:
+            _rate_limited_since = datetime.now(timezone.utc).isoformat()
+            print(f"[ws] Rate limit detected at {_rate_limited_since}", flush=True)
+        result["rate_limited"] = True
+    elif result.get("status") == "ok":
+        # Successful task clears rate limit state
+        if _rate_limited_since is not None:
+            print(f"[ws] Rate limit cleared (was since {_rate_limited_since})", flush=True)
+            _rate_limited_since = None
+
+
 # ---------------------------------------------------------------------------
 # Task execution
 # ---------------------------------------------------------------------------
 async def _execute_task(task_id: str, task_type: str, params: dict) -> dict:
     """Run a task through the existing runner and return the result."""
-    global _active_task
+    global _active_task, _rate_limited_since
     task = {"type": task_type, "params": params}
 
     try:
@@ -98,6 +128,9 @@ async def _execute_task(task_id: str, task_type: str, params: dict) -> dict:
         result = await run_task(validated)
         result["task_id"] = task_id
         result["completed_at"] = datetime.now(timezone.utc).isoformat()
+
+        # Detect rate limiting from task result
+        _check_rate_limit(result)
 
         # Also write to completed dir for backward compat
         out_path = COMPLETED / f"{task_id}.json"
@@ -114,6 +147,7 @@ async def _execute_task(task_id: str, task_type: str, params: dict) -> dict:
             "traceback": traceback.format_exc(),
             "failed_at": datetime.now(timezone.utc).isoformat(),
         }
+        _check_rate_limit(error_result)
         out_path = FAILED / f"{task_id}.json"
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(error_result, indent=2))

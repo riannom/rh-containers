@@ -94,6 +94,18 @@ def looks_challenged(body: str) -> bool:
     )
 
 
+def looks_rate_limited(body: str, url: str = "") -> bool:
+    """Detect X rate limiting — explicit messages or the black/empty page pattern."""
+    # Explicit rate limit text
+    if re.search(r"rate limit|too many requests|temporarily limited", body, re.I):
+        return True
+    # Black/empty page: on an x.com URL but body has almost no content
+    # (normal X pages have at least navigation text, timeline content, etc.)
+    if "x.com" in url and len(body.strip()) < 20:
+        return True
+    return False
+
+
 SET_NATIVE_VALUE_JS = """
 function setNativeValue(el, value) {
     const proto = el.tagName === 'TEXTAREA'
