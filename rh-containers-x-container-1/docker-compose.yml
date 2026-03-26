@@ -7,7 +7,7 @@ services:
 
   chrome:
     build:
-      context: ../x-automation-chrome
+      context: ./x-automation-chrome
       dockerfile: Dockerfile
     image: x-automation-chrome:latest
     restart: unless-stopped
