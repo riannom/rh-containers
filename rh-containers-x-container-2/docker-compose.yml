@@ -6,10 +6,8 @@ services:
       PROXY_AUTH_ADD: "false"
 
   chrome:
-    build:
-      context: ./x-automation-chrome
-      dockerfile: Dockerfile
     image: x-automation-chrome:latest
+    pull_policy: never
     restart: unless-stopped
     ports:
       - "19223:9222"
