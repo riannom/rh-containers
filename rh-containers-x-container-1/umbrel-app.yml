@@ -3,7 +3,7 @@ id: rh-containers-x-container-1
 name: X Container 1
 tagline: Headless Chrome browser for X automation
 category: developer
-version: "1.4.0"
+version: "1.4.1"
 port: 18001
 description: >-
   Self-contained headless Chrome container for X/Twitter automation.
