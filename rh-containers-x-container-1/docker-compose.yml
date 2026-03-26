@@ -6,8 +6,7 @@ services:
       PROXY_AUTH_ADD: "false"
 
   chrome:
-    image: x-automation-chrome:latest
-    pull_policy: never
+    image: ghcr.io/riannom/x-automation-chrome:v1.4.4
     restart: unless-stopped
     ports:
       - "19222:9222"
