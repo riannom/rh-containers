@@ -30,6 +30,7 @@ READ_ONLY_TASKS = {
     "collect_relationships",
     "pull_avatars",
     "vet_candidate",
+    "scrape_list_members",
 }
 MUTATING_TASKS = {
     "follow_accounts",
@@ -87,6 +88,10 @@ def validate_task(task: dict) -> dict:
         list_url = params.get("list_url")
         if not isinstance(list_url, str) or not list_url.strip():
             raise ValueError("manage_list requires params.list_url")
+    elif task_type == "scrape_list_members":
+        list_url = params.get("list_url")
+        if not isinstance(list_url, str) or not list_url.strip():
+            raise ValueError("scrape_list_members requires params.list_url")
     elif task_type == "create_list":
         list_name = params.get("list_name")
         if not isinstance(list_name, str) or not list_name.strip():
