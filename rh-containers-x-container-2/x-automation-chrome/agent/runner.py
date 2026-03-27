@@ -30,6 +30,7 @@ TASK_TO_SCRIPT = {
     "manage_list": "manage_list.py",
     "vet_candidate": "vet_candidate.py",
     "scrape_list_members": "scrape_list_members.py",
+    "scrape_following": "scrape_following.py",
 }
 
 
@@ -75,6 +76,8 @@ def _output_file_for(task_type: str) -> Path:
         return OUT_DIR / "vet_candidate.json"
     if task_type == "scrape_list_members":
         return OUT_DIR / "scrape_list_members.json"
+    if task_type == "scrape_following":
+        return OUT_DIR / "scrape_following.json"
     raise ValueError(f"No output file mapping for task type: {task_type}")
 
 
@@ -156,6 +159,12 @@ def _build_env(task: dict) -> dict[str, str]:
             env["X_VET_MAX_SCROLLS_MAX"] = str(params["max_scrolls_max"])
     elif task_type == "scrape_list_members":
         env["X_LIST_URL"] = str(params.get("list_url", ""))
+        if "max_scrolls" in params:
+            env["X_SCRAPE_MAX_SCROLLS"] = str(params["max_scrolls"])
+        if "session_timeout" in params:
+            env["X_SCRAPE_SESSION_TIMEOUT"] = str(params["session_timeout"])
+    elif task_type == "scrape_following":
+        env["X_FOLLOWING_ACCOUNT"] = str(params.get("account", ""))
         if "max_scrolls" in params:
             env["X_SCRAPE_MAX_SCROLLS"] = str(params["max_scrolls"])
         if "session_timeout" in params:
