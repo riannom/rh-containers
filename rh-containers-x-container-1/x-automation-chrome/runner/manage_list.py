@@ -166,6 +166,12 @@ async def add_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) -> 
             await browser.close_dialog()
             return item
         await browser.sleep(jitter(1500, 500))
+        # Check for rate limit toast after save
+        post_save = await browser.get_page_payload(2500)
+        if looks_rate_limited(post_save["text"], post_save.get("url", "")):
+            item["status"] = "rate-limited"
+            item["rate_limited"] = True
+            return item
 
         # Re-open and confirm the membership persisted.
         if not await browser.click_profile_more_menu():
@@ -242,6 +248,12 @@ async def remove_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) 
             await browser.close_dialog()
             return item
         await browser.sleep(jitter(1500, 500))
+        # Check for rate limit toast after save
+        post_save = await browser.get_page_payload(2500)
+        if looks_rate_limited(post_save["text"], post_save.get("url", "")):
+            item["status"] = "rate-limited"
+            item["rate_limited"] = True
+            return item
 
         if not await browser.click_profile_more_menu():
             item["status"] = "verify-no-more-button"
