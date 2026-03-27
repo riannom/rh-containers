@@ -3,6 +3,7 @@ id: rh-containers-x-container-2
 name: X Container 2
 tagline: Headless Chrome browser for X automation
 category: developer
+icon: https://raw.githubusercontent.com/riannom/rh-containers/main/rh-containers-x-container-2/icon.svg
 version: "1.4.8"
 port: 18002
 description: >-
