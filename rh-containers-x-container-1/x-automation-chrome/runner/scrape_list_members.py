@@ -1,14 +1,22 @@
-"""Scrape all members from an X list by scrolling the members page.
+"""Scrape member count and handles from an X list.
 
-Returns a flat list of handles currently on the list — used by
-reconcile_x_lists to compute ground-truth diffs instead of relying
-on a potentially-stale local cache.
+Two-phase approach:
+1. Navigate to the list's main page, read member count from header
+2. Click through to /members and scroll to collect actual handles
+
+The header count is the source of truth for verification. The handle
+list is used by reconcile to compute diffs. If the /members page fails
+to load, we still return the count from phase 1.
+
+Empty lists show "It's lonely here" or similar — detected and returned
+as 0 members.
 """
 from __future__ import annotations
 
 import asyncio
 import json
 import os
+import re
 import traceback
 from pathlib import Path
 
@@ -24,6 +32,29 @@ OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 def write_json(name: str, payload: dict) -> None:
     (OUT_DIR / name).write_text(json.dumps(payload, indent=2))
+
+
+def parse_member_count(text: str) -> int | None:
+    """Extract member count from page text."""
+    match = re.search(r"(\d+)\s+[Mm]embers?", text)
+    if match:
+        return int(match.group(1))
+    match = re.search(r"(\d+)\s+people in this [Ll]ist", text)
+    if match:
+        return int(match.group(1))
+    return None
+
+
+def looks_empty_list(text: str) -> bool:
+    """Detect X's empty list indicators."""
+    lower = text.lower()
+    return any(phrase in lower for phrase in [
+        "it\u2019s lonely here",
+        "it's lonely here",
+        "there isn\u2019t anyone in this list",
+        "there isn't anyone in this list",
+        "this list is empty",
+    ])
 
 
 async def collect_member_handles(browser: ChromeMCPBrowser, limit: int = 500) -> list[str]:
@@ -81,6 +112,7 @@ async def main() -> None:
 
     try:
         async with ChromeMCPBrowser(browser_url) as browser:
+            # Verify session
             await browser.navigate("https://x.com/home")
             await browser.wait_for_text(["For you", "Following", "Sign in to X"], timeout=20000)
             home = await browser.get_page_payload(3000)
@@ -111,76 +143,74 @@ async def main() -> None:
                 print(json.dumps(result))
                 return
 
-            # Navigate to the list members page
-            members_url = LIST_URL.rstrip("/") + "/members"
-            await browser.navigate(members_url)
+            # ── Phase 1: List main page — get member count from header ──
+            list_url = LIST_URL.rstrip("/")
+            await browser.navigate(list_url)
             await browser.wait_for_text(
-                ["Members", "Edit List", "people in this List"],
+                ["Edit List", "Waiting for posts", "Members", "members", "Following", "lonely"],
                 timeout=20000,
             )
             await browser.sleep(jitter(2000, 500))
 
-            page_payload = await browser.get_page_payload(2500)
-            if looks_rate_limited(page_payload["text"], page_payload.get("url", "")):
+            page_payload = await browser.get_page_payload(3000)
+            page_text = page_payload.get("text", "")
+
+            if looks_rate_limited(page_text, page_payload.get("url", "")):
                 result["status"] = "error"
                 result["error"] = "rate-limited"
                 result["rate_limited"] = True
-                result["phase"] = "members-page"
                 write_json("scrape_list_members.json", result)
                 print(json.dumps(result))
                 return
-            if looks_challenged(page_payload["text"]):
+            if looks_challenged(page_text):
                 result["status"] = "error"
                 result["error"] = "challenge-detected"
-                result["phase"] = "members-page"
                 write_json("scrape_list_members.json", result)
                 print(json.dumps(result))
                 return
 
-            # Check for empty list before scraping — X shows "suggested"
-            # UserCell elements on empty lists that would be false positives
-            page_text = page_payload.get("text", "")
-            if any(phrase in page_text.lower() for phrase in [
-                "there isn't anyone in this list",
-                "there aren\u2019t any people in this list",
-                "this list is empty",
-                "no one is in this list",
-            ]):
+            # Empty list detection
+            if looks_empty_list(page_text):
                 result["status"] = "ok"
-                result["members"] = []
                 result["member_count"] = 0
+                result["members"] = []
                 result["empty_list_detected"] = True
+                result["evidence"] = {"screenshot_path": str(OUT_DIR / "scrape_list_members.png")}
+                await browser.screenshot(result["evidence"]["screenshot_path"], full_page=True)
                 write_json("scrape_list_members.json", result)
                 print(json.dumps(result))
                 return
 
-            # Extract the member count X shows in the header (e.g. "10 Members")
-            # to cross-check against scraped results
-            header_count = await browser.evaluate("""() => {
-                const text = document.body.innerText || '';
-                const match = text.match(/(\\d+)\\s+(?:Members|members|people in this List)/);
-                return match ? parseInt(match[1], 10) : null;
-            }""")
+            header_count = parse_member_count(page_text)
+            result["member_count"] = header_count if header_count is not None else 0
 
-            members = await scrape_all_members(browser)
+            # ── Phase 2: /members page — collect actual handles ──
+            try:
+                members_url = list_url + "/members"
+                await browser.navigate(members_url)
+                await browser.wait_for_text(
+                    ["Members", "members", "lonely", "people in this"],
+                    timeout=20000,
+                )
+                await browser.sleep(jitter(2000, 500))
 
-            # If X header says 0 members but we scraped some, those are
-            # suggested accounts — discard them
-            if header_count == 0 and members:
-                result["status"] = "ok"
-                result["members"] = []
-                result["member_count"] = 0
-                result["discarded_suggestions"] = len(members)
-                write_json("scrape_list_members.json", result)
-                print(json.dumps(result))
-                return
+                members_payload = await browser.get_page_payload(3000)
+                members_text = members_payload.get("text", "")
+
+                if looks_empty_list(members_text):
+                    result["members"] = []
+                elif not looks_rate_limited(members_text, members_payload.get("url", "")):
+                    members = await scrape_all_members(browser)
+                    # Cross-check: if header said 0 but we found handles, discard (suggestions)
+                    if header_count == 0 and members:
+                        result["discarded_suggestions"] = len(members)
+                    else:
+                        result["members"] = members
+            except Exception as members_err:
+                # Phase 2 failure is non-fatal — we still have the count from phase 1
+                result["members_scrape_error"] = str(members_err)
 
             result["status"] = "ok"
-            result["members"] = members
-            result["member_count"] = len(members)
-            if header_count is not None:
-                result["header_member_count"] = header_count
-
             result["evidence"] = {"screenshot_path": str(OUT_DIR / "scrape_list_members.png")}
             await browser.screenshot(result["evidence"]["screenshot_path"], full_page=True)
 
