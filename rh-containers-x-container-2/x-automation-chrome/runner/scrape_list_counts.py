@@ -117,70 +117,58 @@ async def main() -> None:
                 print(json.dumps(result))
                 return
 
-            # Debug: include page text and all hrefs in result
-            all_hrefs = await browser.evaluate("""() => {
-                return Array.from(document.querySelectorAll('a[href]'))
-                    .map(a => a.getAttribute('href'))
-                    .filter(h => h && h.includes('list'))
-                    .slice(0, 30);
-            }""")
-            result["debug_list_hrefs"] = all_hrefs if isinstance(all_hrefs, list) else []
-            result["debug_page_text"] = page_text[:1000]
-
-            # Extract list cards with names, member counts, and URLs.
-            # The lists overview page shows each list as a card/row with
-            # a link containing a list ID and "N Members" text nearby.
-            # Links may use /i/lists/{id} or /lists/{id} format.
-            cards = await browser.evaluate("""() => {
-                const results = [];
-                // Find all links that look like list links (various URL formats)
-                const links = Array.from(document.querySelectorAll('a[href*="/lists/"]'));
-                const seen = new Set();
-                for (const link of links) {
-                    const href = link.getAttribute('href') || '';
-                    // Match list ID from any format: /i/lists/123, /user/lists/123, /lists/123
-                    const match = href.match(/\\/lists\\/(\\d+)/);
-                    if (!match || seen.has(match[1])) continue;
-                    seen.add(match[1]);
-
-                    // Walk up to find the row/card container
-                    let container = link;
-                    for (let i = 0; i < 6; i++) {
-                        if (container.parentElement) container = container.parentElement;
-                    }
-                    const text = container.innerText || '';
-
-                    // Extract member count
-                    const countMatch = text.match(/(\\d+)\\s+[Mm]embers?/);
-                    results.push({
-                        list_id: match[1],
-                        href: href,
-                        text: text.substring(0, 300),
-                        member_count: countMatch ? parseInt(countMatch[1], 10) : null,
-                    });
-                }
-                return results;
-            }""")
+            # Parse list names and member counts from the page text.
+            # X renders list cards without standard <a> links, so we parse
+            # the visible text instead. Format: "List Name\n...N members" or
+            # "List Name\n·N members"
+            # We match our labels by normalizing list names on X.
+            cards = []
+            lines = page_text.split("\n")
+            for i, line in enumerate(lines):
+                count_match = re.search(r"[·.]?\s*(\d+)\s+[Mm]embers?", line)
+                if count_match:
+                    count = int(count_match.group(1))
+                    # Look backwards for the list name (usually a few lines above)
+                    name = ""
+                    for j in range(max(0, i - 5), i):
+                        candidate = lines[j].strip()
+                        # Skip lines that look like metadata, not names
+                        if candidate and not candidate.startswith("@") and "members" not in candidate.lower() and "followers" not in candidate.lower():
+                            name = candidate
+                    cards.append({"name": name, "member_count": count, "line": line.strip()})
 
             if not isinstance(cards, list):
                 cards = []
 
             # Match cards to our labels by list ID
             counts_by_label: dict[str, int] = {}
-            counts_by_id: dict[str, int] = {}
-            for card in cards:
-                list_id = str(card.get("list_id", ""))
-                count = card.get("member_count")
-                if list_id and count is not None:
-                    counts_by_id[list_id] = count
+            # Match cards to our labels by normalizing names.
+            # X list names like "Breadth | Tier A Macro" → match "tier-a-macro"
+            def normalize_name(name: str) -> str:
+                """Normalize X list name to match our label format."""
+                n = name.lower().strip()
+                # Strip common prefixes like "Breadth |", "Core |", "Outlier |"
+                for prefix in ("breadth |", "core |", "outlier |", "breadth|", "core|", "outlier|"):
+                    if n.startswith(prefix):
+                        n = n[len(prefix):].strip()
+                # "Tier A Macro" → "tier-a-macro"
+                return n.replace(" ", "-")
 
-            for label, list_id in label_to_list_id.items():
-                if list_id in counts_by_id:
-                    counts_by_label[label] = counts_by_id[list_id]
+            for card in cards:
+                name = card.get("name", "")
+                count = card.get("member_count")
+                if not name or count is None:
+                    continue
+                normalized = normalize_name(name)
+                # Match against our label set
+                for label in label_to_list_id:
+                    if normalized == label or label in normalized or normalized in label:
+                        counts_by_label[label] = count
+                        break
 
             result["status"] = "ok"
             result["counts"] = counts_by_label
-            result["counts_by_id"] = counts_by_id
+            result["cards"] = cards
             result["cards_found"] = len(cards)
             result["evidence"] = {"screenshot_path": str(OUT_DIR / "scrape_list_counts.png")}
             await browser.screenshot(result["evidence"]["screenshot_path"], full_page=True)
