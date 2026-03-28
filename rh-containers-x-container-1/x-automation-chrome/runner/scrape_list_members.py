@@ -137,10 +137,49 @@ async def main() -> None:
                 print(json.dumps(result))
                 return
 
+            # Check for empty list before scraping — X shows "suggested"
+            # UserCell elements on empty lists that would be false positives
+            page_text = page_payload.get("text", "")
+            if any(phrase in page_text.lower() for phrase in [
+                "there isn't anyone in this list",
+                "there aren\u2019t any people in this list",
+                "this list is empty",
+                "no one is in this list",
+            ]):
+                result["status"] = "ok"
+                result["members"] = []
+                result["member_count"] = 0
+                result["empty_list_detected"] = True
+                write_json("scrape_list_members.json", result)
+                print(json.dumps(result))
+                return
+
+            # Extract the member count X shows in the header (e.g. "10 Members")
+            # to cross-check against scraped results
+            header_count = await browser.evaluate("""() => {
+                const text = document.body.innerText || '';
+                const match = text.match(/(\\d+)\\s+(?:Members|members|people in this List)/);
+                return match ? parseInt(match[1], 10) : null;
+            }""")
+
             members = await scrape_all_members(browser)
+
+            # If X header says 0 members but we scraped some, those are
+            # suggested accounts — discard them
+            if header_count == 0 and members:
+                result["status"] = "ok"
+                result["members"] = []
+                result["member_count"] = 0
+                result["discarded_suggestions"] = len(members)
+                write_json("scrape_list_members.json", result)
+                print(json.dumps(result))
+                return
+
             result["status"] = "ok"
             result["members"] = members
             result["member_count"] = len(members)
+            if header_count is not None:
+                result["header_member_count"] = header_count
 
             result["evidence"] = {"screenshot_path": str(OUT_DIR / "scrape_list_members.png")}
             await browser.screenshot(result["evidence"]["screenshot_path"], full_page=True)
