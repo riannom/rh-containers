@@ -117,6 +117,16 @@ async def main() -> None:
                 print(json.dumps(result))
                 return
 
+            # Debug: include page text and all hrefs in result
+            all_hrefs = await browser.evaluate("""() => {
+                return Array.from(document.querySelectorAll('a[href]'))
+                    .map(a => a.getAttribute('href'))
+                    .filter(h => h && h.includes('list'))
+                    .slice(0, 30);
+            }""")
+            result["debug_list_hrefs"] = all_hrefs if isinstance(all_hrefs, list) else []
+            result["debug_page_text"] = page_text[:1000]
+
             # Extract list cards with names, member counts, and URLs.
             # The lists overview page shows each list as a card/row with
             # a link containing a list ID and "N Members" text nearby.
