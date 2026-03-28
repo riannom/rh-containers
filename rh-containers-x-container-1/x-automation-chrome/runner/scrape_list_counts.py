@@ -113,30 +113,34 @@ async def main() -> None:
                 return
 
             # Extract list cards with names, member counts, and URLs.
-            # Each list card on X has a link containing /i/lists/{id} and
-            # shows "N Members" or "N members" below the list name.
+            # The lists overview page shows each list as a card/row with
+            # a link containing a list ID and "N Members" text nearby.
+            # Links may use /i/lists/{id} or /lists/{id} format.
             cards = await browser.evaluate("""() => {
                 const results = [];
-                // Find all links to lists
-                const links = Array.from(document.querySelectorAll('a[href*="/i/lists/"]'));
+                // Find all links that look like list links (various URL formats)
+                const links = Array.from(document.querySelectorAll('a[href*="/lists/"]'));
                 const seen = new Set();
                 for (const link of links) {
                     const href = link.getAttribute('href') || '';
-                    const match = href.match(/\\/i\\/lists\\/(\\d+)/);
+                    // Match list ID from any format: /i/lists/123, /user/lists/123, /lists/123
+                    const match = href.match(/\\/lists\\/(\\d+)/);
                     if (!match || seen.has(match[1])) continue;
                     seen.add(match[1]);
 
-                    // Walk up to find the card container and extract text
-                    let container = link.closest('[data-testid]') || link.parentElement?.parentElement;
-                    if (!container) container = link;
+                    // Walk up to find the row/card container
+                    let container = link;
+                    for (let i = 0; i < 6; i++) {
+                        if (container.parentElement) container = container.parentElement;
+                    }
                     const text = container.innerText || '';
 
-                    // Extract member count from nearby text
+                    // Extract member count
                     const countMatch = text.match(/(\\d+)\\s+[Mm]embers?/);
                     results.push({
                         list_id: match[1],
                         href: href,
-                        text: text.substring(0, 200),
+                        text: text.substring(0, 300),
                         member_count: countMatch ? parseInt(countMatch[1], 10) : null,
                     });
                 }
