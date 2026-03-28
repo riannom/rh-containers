@@ -24,8 +24,8 @@ from mcp_browser import ChromeMCPBrowser, looks_challenged, looks_logged_in, loo
 
 OUT_DIR = Path(os.environ.get("X_AUTOMATION_OUT_DIR", Path(__file__).resolve().parent.parent / "out"))
 LIST_URL = os.environ.get("X_LIST_URL", "")
-MAX_SCROLLS = int(os.environ.get("X_SCRAPE_MAX_SCROLLS", "40"))
-SESSION_TIMEOUT_SECONDS = int(os.environ.get("X_SCRAPE_SESSION_TIMEOUT", "120"))
+MAX_SCROLLS = int(os.environ.get("X_SCRAPE_MAX_SCROLLS", "60"))
+SESSION_TIMEOUT_SECONDS = int(os.environ.get("X_SCRAPE_SESSION_TIMEOUT", "300"))
 
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -89,13 +89,13 @@ async def scrape_all_members(browser: ChromeMCPBrowser) -> list[str]:
 
         if new_count == 0:
             consecutive_empty += 1
-            if consecutive_empty >= 3:
+            if consecutive_empty >= 5:
                 break
         else:
             consecutive_empty = 0
 
         await browser.scroll_page()
-        await browser.sleep(jitter(800, 300))
+        await browser.sleep(jitter(1500, 500))
 
     return sorted(seen)
 
