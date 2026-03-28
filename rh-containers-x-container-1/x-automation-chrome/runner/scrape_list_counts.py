@@ -101,6 +101,11 @@ async def main() -> None:
             )
             await browser.sleep(jitter(2000, 500))
 
+            # Scroll down to load all lists — some may be below the fold
+            for _ in range(5):
+                await browser.scroll_page()
+                await browser.sleep(jitter(1000, 300))
+
             page_payload = await browser.get_page_payload(5000)
             page_text = page_payload.get("text", "")
 
