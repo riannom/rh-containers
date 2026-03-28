@@ -24,6 +24,7 @@ from mcp_browser import ChromeMCPBrowser, looks_challenged, looks_logged_in, loo
 
 OUT_DIR = Path(os.environ.get("X_AUTOMATION_OUT_DIR", Path(__file__).resolve().parent.parent / "out"))
 LIST_URL = os.environ.get("X_LIST_URL", "")
+SKIP_MEMBERS = os.environ.get("X_SCRAPE_SKIP_MEMBERS", "").lower() in ("1", "true", "yes")
 MAX_SCROLLS = int(os.environ.get("X_SCRAPE_MAX_SCROLLS", "60"))
 SESSION_TIMEOUT_SECONDS = int(os.environ.get("X_SCRAPE_SESSION_TIMEOUT", "300"))
 
@@ -185,6 +186,15 @@ async def main() -> None:
             result["member_count"] = header_count if header_count is not None else 0
 
             # ── Phase 2: /members page — collect actual handles ──
+            # Skipped when caller only needs the count (fast path).
+            if SKIP_MEMBERS:
+                result["status"] = "ok"
+                result["evidence"] = {"screenshot_path": str(OUT_DIR / "scrape_list_members.png")}
+                await browser.screenshot(result["evidence"]["screenshot_path"], full_page=True)
+                write_json("scrape_list_members.json", result)
+                print(json.dumps(result))
+                return
+
             try:
                 members_url = list_url + "/members"
                 await browser.navigate(members_url)

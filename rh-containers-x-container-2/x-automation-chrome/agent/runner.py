@@ -159,6 +159,8 @@ def _build_env(task: dict) -> dict[str, str]:
             env["X_VET_MAX_SCROLLS_MAX"] = str(params["max_scrolls_max"])
     elif task_type == "scrape_list_members":
         env["X_LIST_URL"] = str(params.get("list_url", ""))
+        if params.get("skip_members"):
+            env["X_SCRAPE_SKIP_MEMBERS"] = "1"
         if "max_scrolls" in params:
             env["X_SCRAPE_MAX_SCROLLS"] = str(params["max_scrolls"])
         if "session_timeout" in params:
