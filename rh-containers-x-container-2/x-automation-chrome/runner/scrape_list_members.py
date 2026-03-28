@@ -1,15 +1,17 @@
-"""Scrape member count and handles from an X list.
+"""Scrape and validate X list membership.
 
 Two-phase approach:
 1. Navigate to the list's main page, read member count from header
-2. Click through to /members and scroll to collect actual handles
+2. Scroll /members and validate each handle against a desired set
 
-The header count is the source of truth for verification. The handle
-list is used by reconcile to compute diffs. If the /members page fails
-to load, we still return the count from phase 1.
+Phase 1 is fast (~5s) and always runs — gives the member count.
+Phase 2 is slow (30-300s) and only runs when the caller provides a
+desired_handles set to validate against. It classifies each handle:
+  - present + desired = correct
+  - present + not desired = extra (shouldn't be here)
+  - desired + not seen after full scroll = missing (needs adding)
 
-Empty lists show "It's lonely here" or similar — detected and returned
-as 0 members.
+Empty lists show "It's lonely here" — detected as 0 members.
 """
 from __future__ import annotations
 
@@ -24,6 +26,7 @@ from mcp_browser import ChromeMCPBrowser, looks_challenged, looks_logged_in, loo
 
 OUT_DIR = Path(os.environ.get("X_AUTOMATION_OUT_DIR", Path(__file__).resolve().parent.parent / "out"))
 LIST_URL = os.environ.get("X_LIST_URL", "")
+DESIRED_HANDLES_JSON = os.environ.get("X_DESIRED_HANDLES_JSON", "[]")
 SKIP_MEMBERS = os.environ.get("X_SCRAPE_SKIP_MEMBERS", "").lower() in ("1", "true", "yes")
 MAX_SCROLLS = int(os.environ.get("X_SCRAPE_MAX_SCROLLS", "60"))
 SESSION_TIMEOUT_SECONDS = int(os.environ.get("X_SCRAPE_SESSION_TIMEOUT", "300"))
@@ -75,8 +78,14 @@ async def collect_member_handles(browser: ChromeMCPBrowser, limit: int = 500) ->
     return data if isinstance(data, list) else []
 
 
-async def scrape_all_members(browser: ChromeMCPBrowser) -> list[str]:
-    """Scroll the members page and collect all unique handles."""
+async def validate_members(browser: ChromeMCPBrowser, desired: set[str]) -> dict:
+    """Scroll /members and validate each handle against the desired set.
+
+    Returns:
+        present: handles on the list that are in the desired set
+        extra: handles on the list that are NOT in the desired set
+        missing: desired handles not found on the list after scrolling
+    """
     seen: set[str] = set()
     consecutive_empty = 0
 
@@ -98,15 +107,25 @@ async def scrape_all_members(browser: ChromeMCPBrowser) -> list[str]:
         await browser.scroll_page()
         await browser.sleep(jitter(1500, 500))
 
-    return sorted(seen)
+    present = sorted(seen & desired)
+    extra = sorted(seen - desired)
+    missing = sorted(desired - seen)
+
+    return {
+        "present": present,
+        "extra": extra,
+        "missing": missing,
+        "total_seen": len(seen),
+    }
 
 
 async def main() -> None:
+    desired = set(h.lower().strip() for h in json.loads(DESIRED_HANDLES_JSON) if h.strip())
+
     result = {
         "status": "unknown",
         "task_type": "scrape_list_members",
         "list_url": LIST_URL,
-        "members": [],
         "member_count": 0,
     }
     browser_url = os.environ.get("BROWSER_URL") or os.environ.get("CDP_URL") or "http://127.0.0.1:9222"
@@ -174,8 +193,9 @@ async def main() -> None:
             if looks_empty_list(page_text):
                 result["status"] = "ok"
                 result["member_count"] = 0
-                result["members"] = []
                 result["empty_list_detected"] = True
+                if desired:
+                    result["missing"] = sorted(desired)
                 result["evidence"] = {"screenshot_path": str(OUT_DIR / "scrape_list_members.png")}
                 await browser.screenshot(result["evidence"]["screenshot_path"], full_page=True)
                 write_json("scrape_list_members.json", result)
@@ -184,11 +204,13 @@ async def main() -> None:
 
             header_count = parse_member_count(page_text)
             result["member_count"] = header_count if header_count is not None else 0
+            result["status"] = "ok"
+            # Save after phase 1 so the count survives a phase 2 timeout
+            write_json("scrape_list_members.json", result)
 
-            # ── Phase 2: /members page — collect actual handles ──
-            # Skipped when caller only needs the count (fast path).
-            if SKIP_MEMBERS:
-                result["status"] = "ok"
+            # ── Phase 2: /members — validate against desired set ──
+            # Skip if caller only needs the count, or no desired set provided
+            if SKIP_MEMBERS or not desired:
                 result["evidence"] = {"screenshot_path": str(OUT_DIR / "scrape_list_members.png")}
                 await browser.screenshot(result["evidence"]["screenshot_path"], full_page=True)
                 write_json("scrape_list_members.json", result)
@@ -208,19 +230,18 @@ async def main() -> None:
                 members_text = members_payload.get("text", "")
 
                 if looks_empty_list(members_text):
-                    result["members"] = []
+                    result["missing"] = sorted(desired)
+                    result["present"] = []
+                    result["extra"] = []
                 elif not looks_rate_limited(members_text, members_payload.get("url", "")):
-                    members = await scrape_all_members(browser)
-                    # Cross-check: if header said 0 but we found handles, discard (suggestions)
-                    if header_count == 0 and members:
-                        result["discarded_suggestions"] = len(members)
-                    else:
-                        result["members"] = members
+                    validation = await validate_members(browser, desired)
+                    result["present"] = validation["present"]
+                    result["extra"] = validation["extra"]
+                    result["missing"] = validation["missing"]
+                    result["total_seen"] = validation["total_seen"]
             except Exception as members_err:
-                # Phase 2 failure is non-fatal — we still have the count from phase 1
                 result["members_scrape_error"] = str(members_err)
 
-            result["status"] = "ok"
             result["evidence"] = {"screenshot_path": str(OUT_DIR / "scrape_list_members.png")}
             await browser.screenshot(result["evidence"]["screenshot_path"], full_page=True)
 
@@ -237,6 +258,17 @@ if __name__ == "__main__":
     try:
         asyncio.run(asyncio.wait_for(main(), timeout=SESSION_TIMEOUT_SECONDS))
     except TimeoutError:
+        saved = OUT_DIR / "scrape_list_members.json"
+        if saved.exists():
+            try:
+                payload = json.loads(saved.read_text())
+                payload["timeout"] = True
+                payload["error"] = f"session-timeout-{SESSION_TIMEOUT_SECONDS}s (partial results preserved)"
+                write_json("scrape_list_members.json", payload)
+                print(json.dumps(payload))
+                return
+            except Exception:
+                pass
         payload = {
             "status": "error",
             "task_type": "scrape_list_members",
