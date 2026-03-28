@@ -258,6 +258,8 @@ if __name__ == "__main__":
     try:
         asyncio.run(asyncio.wait_for(main(), timeout=SESSION_TIMEOUT_SECONDS))
     except TimeoutError:
+        # Phase 1 saves partial results to disk — read them back so the
+        # count (at minimum) is returned even if phase 2 timed out.
         saved = OUT_DIR / "scrape_list_members.json"
         if saved.exists():
             try:
@@ -266,9 +268,10 @@ if __name__ == "__main__":
                 payload["error"] = f"session-timeout-{SESSION_TIMEOUT_SECONDS}s (partial results preserved)"
                 write_json("scrape_list_members.json", payload)
                 print(json.dumps(payload))
-                return
             except Exception:
                 pass
+            else:
+                raise SystemExit(0)
         payload = {
             "status": "error",
             "task_type": "scrape_list_members",
