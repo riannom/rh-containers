@@ -28,7 +28,7 @@ OUT_DIR = Path(os.environ.get("X_AUTOMATION_OUT_DIR", Path(__file__).resolve().p
 LIST_URL = os.environ.get("X_LIST_URL", "")
 DESIRED_HANDLES_JSON = os.environ.get("X_DESIRED_HANDLES_JSON", "[]")
 SKIP_MEMBERS = os.environ.get("X_SCRAPE_SKIP_MEMBERS", "").lower() in ("1", "true", "yes")
-MAX_SCROLLS = int(os.environ.get("X_SCRAPE_MAX_SCROLLS", "60"))
+MAX_SCROLLS = int(os.environ.get("X_SCRAPE_MAX_SCROLLS", "200"))
 SESSION_TIMEOUT_SECONDS = int(os.environ.get("X_SCRAPE_SESSION_TIMEOUT", "300"))
 
 OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -78,8 +78,12 @@ async def collect_member_handles(browser: ChromeMCPBrowser, limit: int = 500) ->
     return data if isinstance(data, list) else []
 
 
-async def validate_members(browser: ChromeMCPBrowser, desired: set[str]) -> dict:
+async def validate_members(browser: ChromeMCPBrowser, desired: set[str], expected_count: int = 0) -> dict:
     """Scroll /members and validate each handle against the desired set.
+
+    Scrolls until we've seen all members (matching expected_count from
+    phase 1) or exhausted the page. Uses a generous empty threshold
+    to handle X's lazy loading.
 
     Returns:
         present: handles on the list that are in the desired set
@@ -88,6 +92,9 @@ async def validate_members(browser: ChromeMCPBrowser, desired: set[str]) -> dict
     """
     seen: set[str] = set()
     consecutive_empty = 0
+    # Keep scrolling until we've found all members or truly hit bottom
+    max_empty = 8  # generous threshold for lazy loading gaps
+    target = expected_count if expected_count > 0 else 9999
 
     for _ in range(MAX_SCROLLS):
         handles = await collect_member_handles(browser)
@@ -99,7 +106,8 @@ async def validate_members(browser: ChromeMCPBrowser, desired: set[str]) -> dict
 
         if new_count == 0:
             consecutive_empty += 1
-            if consecutive_empty >= 5:
+            # Stop if we've seen all expected members OR truly exhausted
+            if len(seen) >= target or consecutive_empty >= max_empty:
                 break
         else:
             consecutive_empty = 0
@@ -233,7 +241,7 @@ async def main() -> None:
                     result["present"] = []
                     result["extra"] = []
                 elif not looks_rate_limited(members_text, members_payload.get("url", "")):
-                    validation = await validate_members(browser, desired)
+                    validation = await validate_members(browser, desired, expected_count=result.get("member_count", 0))
                     result["present"] = validation["present"]
                     result["extra"] = validation["extra"]
                     result["missing"] = validation["missing"]
