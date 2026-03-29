@@ -17,8 +17,7 @@ ADD = json.loads(os.environ.get("X_LIST_ADD_JSON", "[]"))
 REMOVE = json.loads(os.environ.get("X_LIST_REMOVE_JSON", "[]"))
 PRIVATE_RETRY_DAYS = int(os.environ.get("X_PRIVATE_RETRY_DAYS", "7"))
 FORCE_ADD = os.environ.get("X_MANAGE_LIST_FORCE_ADD", "").lower() in ("1", "true", "yes")
-# Temporarily hardcode debug mode ON until we figure out the checkbox issue
-DEBUG_DIALOG = True
+DEBUG_DIALOG = os.environ.get("X_MANAGE_LIST_DEBUG_DIALOG", "").lower() in ("1", "true", "yes")
 PER_HANDLE_TIMEOUT_SECONDS = int(os.environ.get("X_MANAGE_LIST_PER_HANDLE_TIMEOUT", "75"))
 SESSION_TIMEOUT_SECONDS = int(os.environ.get("X_MANAGE_LIST_SESSION_TIMEOUT", "240"))
 PROFILE_WAIT_TIMEOUT_MS = int(
@@ -233,10 +232,33 @@ async def add_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) -> 
             return item
         item["status"] = "verified-added"
     else:
-        status = await browser.toggle_list_membership(list_name)
-        if status == "added":
+        # Use trusted clicks via a11y snapshot — same approach as force_add
+        # Synthetic DOM .click() doesn't trigger React onChange, leaving
+        # the Save button disabled.
+        import re as _re
+        snapshot = await browser.take_a11y_snapshot()
+        target_uid = None
+        is_checked = False
+        for line in snapshot.split("\n"):
+            if "checkbox" in line.lower() and list_name.lower() in line.lower():
+                uid_match = _re.search(r"uid=([^\s\]\[]+)", line)
+                if uid_match:
+                    is_checked = " checked" in line.lower() and "not checked" not in line.lower()
+                    target_uid = uid_match.group(1)
+                    break
+
+        if not target_uid:
+            item["status"] = "list-not-found-in-dialog"
+            await browser.close_dialog()
+            return item
+
+        if is_checked:
+            item["status"] = "already-member"
+        else:
+            await browser.trusted_click(target_uid)
             await browser.sleep(jitter(500, 200))
-            if not await browser.click_button_matching(r"^Save$"):
+            save_clicked = await browser.trusted_click_button(r"Save")
+            if not save_clicked:
                 item["status"] = "save-not-found"
                 await browser.close_dialog()
                 return item
@@ -246,27 +268,7 @@ async def add_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) -> 
                 item["status"] = "rate-limited"
                 item["rate_limited"] = True
                 return item
-
-            # Re-open and confirm the membership persisted.
-            if not await browser.click_profile_more_menu():
-                item["status"] = "verify-no-more-button"
-                return item
-            await browser.sleep(jitter(800, 300))
-            if not await browser.click_menu_item_matching(r"Add/remove.*Lists|Lists"):
-                item["status"] = "verify-no-list-option"
-                return item
-            await browser.wait_for_text([list_name, "Pick a List"], timeout=LIST_WAIT_TIMEOUT_MS)
-
-        verified = await browser.get_list_membership_state(list_name)
-        if status == "already-member" and verified == "selected":
-            item["status"] = "already-member"
-        elif status == "added" and verified == "selected":
             item["status"] = "verified-added"
-        elif status == "added":
-            item["status"] = "add-unverified"
-            item["verification_state"] = verified
-        else:
-            item["status"] = status
     await browser.close_dialog()
     await browser.sleep(jitter(700, 300))
 
