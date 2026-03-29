@@ -250,6 +250,7 @@ async def main() -> None:
             except Exception as members_err:
                 result["members_scrape_error"] = str(members_err)
 
+            result["status"] = "ok"
             result["evidence"] = {"screenshot_path": str(OUT_DIR / "scrape_list_members.png")}
             await browser.screenshot(result["evidence"]["screenshot_path"], full_page=True)
 
