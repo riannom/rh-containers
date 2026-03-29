@@ -355,7 +355,6 @@ async def remove_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) 
             item["rate_limited"] = True
             return item
         item["status"] = "verified-removed"
-        item["status"] = status
     await browser.close_dialog()
     await browser.sleep(jitter(700, 300))
     return item
