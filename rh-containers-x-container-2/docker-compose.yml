@@ -23,4 +23,7 @@ services:
       X_AUTOMATION_ALLOW_MUTATIONS: "1"
     volumes:
       - ${APP_DATA_DIR}/data/chrome-profile:/home/seluser/chrome-profile
+      - ./runner:/opt/x-automation/runner:ro
+      - ./config:/opt/x-automation/config:ro
+      - ${APP_DATA_DIR}/data/state:/opt/x-automation/state
     shm_size: "2g"

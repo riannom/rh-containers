@@ -1,0 +1,80 @@
+[
+  {
+    "_comment": "Local container on the Mac (optional, for dev/testing or as 3rd worker)",
+    "browser_id": "chrome-local-1",
+    "browser_url": "http://127.0.0.1:9222",
+    "ws_url": "ws://127.0.0.1:18000/ws",
+    "transport": "websocket",
+    "enabled": true,
+    "priority": 50,
+    "max_concurrent_leases": 1,
+    "role": "local-worker",
+    "expected_x_account": "narusegawa325",
+    "allows_follow": true,
+    "allows_list_mutation": true,
+    "allows_feed_collection": true,
+    "allows_relationship_collection": true,
+    "allows_discovery": true,
+    "allows_avatar_collection": true,
+    "canonical_lists": [
+      "tier-a-macro",
+      "tier-a-tactical",
+      "tier-b-all",
+      "tier-c-all"
+    ],
+    "ip_class": "local",
+    "tags": ["chrome", "container", "local"]
+  },
+  {
+    "_comment": "Umbrel container 1",
+    "browser_id": "umbrel-x1",
+    "browser_url": "http://umbrel.local:19222",
+    "ws_url": "ws://umbrel.local:18001/ws",
+    "transport": "websocket",
+    "enabled": true,
+    "priority": 100,
+    "max_concurrent_leases": 1,
+    "role": "umbrel-worker",
+    "expected_x_account": "REPLACE_WITH_X_HANDLE_1",
+    "allows_follow": true,
+    "allows_list_mutation": true,
+    "allows_feed_collection": true,
+    "allows_relationship_collection": true,
+    "allows_discovery": true,
+    "allows_avatar_collection": true,
+    "canonical_lists": [
+      "tier-a-macro",
+      "tier-a-tactical",
+      "tier-b-all",
+      "tier-c-all"
+    ],
+    "ip_class": "umbrel-lan",
+    "tags": ["chrome", "container", "umbrel"]
+  },
+  {
+    "_comment": "Umbrel container 2",
+    "browser_id": "umbrel-x2",
+    "browser_url": "http://umbrel.local:19223",
+    "ws_url": "ws://umbrel.local:18002/ws",
+    "transport": "websocket",
+    "enabled": true,
+    "priority": 100,
+    "max_concurrent_leases": 1,
+    "role": "umbrel-worker",
+    "expected_x_account": "REPLACE_WITH_X_HANDLE_2",
+    "allows_follow": true,
+    "allows_list_mutation": true,
+    "allows_feed_collection": true,
+    "allows_relationship_collection": true,
+    "allows_discovery": true,
+    "allows_avatar_collection": true,
+    "canonical_lists": [
+      "tier-a-macro",
+      "tier-a-tactical",
+      "tier-b-all",
+      "tier-c-all"
+    ],
+    "ip_class": "umbrel-lan",
+    "tags": ["chrome", "container", "umbrel"]
+  }
+]

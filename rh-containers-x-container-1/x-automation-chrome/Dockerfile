@@ -28,15 +28,17 @@ COPY scripts/start-chrome-direct.sh /opt/bin/start-chrome-direct.sh
 COPY scripts/fix-permissions.sh /opt/bin/fix-permissions.sh
 RUN chmod +x /opt/bin/start-chrome-direct.sh /opt/bin/fix-permissions.sh
 
-# Copy x-automation agent, runner, and WS server into the container.
-# The WS server wraps the agent's task dispatch over WebSocket so the
-# scheduler can submit tasks from a remote machine.
+# Copy infrastructure code (task executor) into the image.
+# Runner scripts are NOT in the image — they're mounted from the host
+# at runtime via docker-compose volumes. This means script changes only
+# require an rsync to the Umbrel node, not a container rebuild.
 COPY agent/ /opt/x-automation/agent/
-COPY runner/ /opt/x-automation/runner/
 COPY api/ /opt/x-automation/api/
 RUN mkdir -p /opt/x-automation/tasks/{pending,active,completed,failed} \
              /opt/x-automation/out \
              /opt/x-automation/state \
+             /opt/x-automation/runner \
+             /opt/x-automation/config \
     && chown -R seluser:seluser /opt/x-automation
 
 EXPOSE 18000
