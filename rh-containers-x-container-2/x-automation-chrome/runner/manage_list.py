@@ -160,28 +160,39 @@ async def add_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) -> 
     await browser.wait_for_text([list_name, "Pick a List"], timeout=LIST_WAIT_TIMEOUT_MS)
     await browser.sleep(jitter(1200, 400))
     if FORCE_ADD:
-        # Force-add: click the checkbox regardless of state to uncheck,
-        # then click again to recheck, ensuring X re-registers the add.
-        # This works around stale aria-checked state in X's dialog.
+        # Force-add: click the checkbox twice (uncheck then recheck) regardless
+        # of current state. Uses direct DOM click both times since
+        # toggle_list_membership won't click when aria-checked is true.
+        CLICK_JS = f"""() => {{
+            const targetName = {json.dumps(list_name)}.trim().toLowerCase();
+            const rows = Array.from(document.querySelectorAll('[role="checkbox"], [aria-checked], [aria-selected]'));
+            const row = rows.find((el) => {{
+                let node = el;
+                for (let d = 0; node && d < 5; d++, node = node.parentElement) {{
+                    const t = (node.innerText || node.textContent || '').toLowerCase();
+                    if (t.includes(targetName)) return true;
+                }}
+                return false;
+            }});
+            if (!row) return 'list-not-found';
+            const ct = row.closest('[role="option"], label, li, div') || row;
+            ct.click();
+            return 'clicked';
+        }}"""
         current_state = await browser.get_list_membership_state(list_name)
         if current_state == "selected":
-            # Uncheck first
-            await browser.evaluate(f"""() => {{
-                const targetName = {json.dumps(list_name)}.trim().toLowerCase();
-                const rows = Array.from(document.querySelectorAll('[role="checkbox"], [aria-checked], [aria-selected]'));
-                const row = rows.find((el) => {{
-                    let node = el;
-                    for (let d = 0; node && d < 5; d++, node = node.parentElement) {{
-                        const t = (node.innerText || node.textContent || '').toLowerCase();
-                        if (t.includes(targetName)) return true;
-                    }}
-                    return false;
-                }});
-                if (row) {{ const ct = row.closest('[role="option"], label, li, div') || row; ct.click(); }}
-            }}""")
-            await browser.sleep(jitter(800, 300))
-        # Now click to add (checkbox should be unchecked)
-        status = await browser.toggle_list_membership(list_name)
+            # Uncheck
+            await browser.evaluate(CLICK_JS)
+            await browser.sleep(jitter(1500, 500))
+            # Recheck
+            result_click = await browser.evaluate(CLICK_JS)
+            await browser.sleep(jitter(500, 200))
+            status = "added" if result_click == "clicked" else "force-add-failed"
+        else:
+            # Not checked — just click to add
+            result_click = await browser.evaluate(CLICK_JS)
+            await browser.sleep(jitter(500, 200))
+            status = "added" if result_click == "clicked" else "force-add-failed"
         item["force_toggled"] = True
     else:
         status = await browser.toggle_list_membership(list_name)

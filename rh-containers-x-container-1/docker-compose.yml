@@ -6,7 +6,7 @@ services:
       PROXY_AUTH_ADD: "false"
 
   chrome:
-    image: ghcr.io/riannom/x-automation-chrome:v1.4.26
+    image: ghcr.io/riannom/x-automation-chrome:v1.4.27
     restart: unless-stopped
     ports:
       - "19222:9222"
