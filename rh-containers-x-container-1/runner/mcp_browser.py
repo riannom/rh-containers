@@ -814,6 +814,45 @@ class ChromeMCPBrowser:
         )
         return int(position or 0)
 
+    async def scroll_modal(self) -> int:
+        """Scroll inside a modal/dialog overlay instead of the main page.
+
+        X's /members page shows the member list inside a modal with its own
+        scroll container. This finds the scrollable container and scrolls it.
+        """
+        position = await self.evaluate(
+            """async () => {
+                // Find the scrollable modal container — typically a div with
+                // overflow-y: auto/scroll inside a dialog or overlay
+                const candidates = Array.from(document.querySelectorAll(
+                    '[role="dialog"] [style*="overflow"], [aria-modal] [style*="overflow"], ' +
+                    '[data-testid="sheetDialog"] *, [role="dialog"] *'
+                ));
+                // Find the tallest scrollable element
+                let scroller = null;
+                let maxHeight = 0;
+                for (const el of document.querySelectorAll('*')) {
+                    const style = window.getComputedStyle(el);
+                    if ((style.overflowY === 'auto' || style.overflowY === 'scroll') &&
+                        el.scrollHeight > el.clientHeight &&
+                        el.scrollHeight > maxHeight) {
+                        maxHeight = el.scrollHeight;
+                        scroller = el;
+                    }
+                }
+                if (!scroller) {
+                    // Fallback: scroll the main page
+                    window.scrollBy(0, window.innerHeight * 2);
+                    await new Promise(r => setTimeout(r, 2500));
+                    return -1;
+                }
+                scroller.scrollBy(0, scroller.clientHeight);
+                await new Promise(r => setTimeout(r, 2500));
+                return Math.floor(scroller.scrollTop);
+            }"""
+        )
+        return int(position or 0)
+
 
 async def scroll_and_collect(
     browser: ChromeMCPBrowser,

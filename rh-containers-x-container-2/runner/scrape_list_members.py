@@ -112,7 +112,8 @@ async def validate_members(browser: ChromeMCPBrowser, desired: set[str], expecte
         else:
             consecutive_empty = 0
 
-        await browser.scroll_page()
+        # /members shows content in a modal — scroll the modal, not the page
+        await browser.scroll_modal()
         await browser.sleep(jitter(1500, 500))
 
     present = sorted(seen & desired)
