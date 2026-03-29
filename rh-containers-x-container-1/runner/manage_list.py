@@ -316,39 +316,45 @@ async def remove_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) 
             return item
     await browser.wait_for_text([list_name, "Pick a List"], timeout=LIST_WAIT_TIMEOUT_MS)
     await browser.sleep(jitter(1200, 400))
-    status = await browser.remove_from_list(list_name)
-    if status == "removed":
+
+    # Use trusted clicks — same as add_handle. Synthetic DOM clicks
+    # don't trigger React onChange so Save stays disabled.
+    import re as _re
+    snapshot = await browser.take_a11y_snapshot()
+    target_uid = None
+    is_checked = False
+    for line in snapshot.split("\n"):
+        if "checkbox" in line.lower() and list_name.lower() in line.lower():
+            uid_match = _re.search(r"uid=([^\s\]\[]+)", line)
+            if uid_match:
+                is_checked = " checked" in line.lower() and "not checked" not in line.lower()
+                target_uid = uid_match.group(1)
+                break
+
+    if not target_uid:
+        item["status"] = "list-not-found-in-dialog"
+        await browser.close_dialog()
+        return item
+
+    if not is_checked:
+        item["status"] = "not-member"
+    else:
+        # Uncheck with trusted click
+        await browser.trusted_click(target_uid)
         await browser.sleep(jitter(500, 200))
-        if not await browser.click_button_matching(r"^Save$"):
+        # Save with trusted click
+        save_clicked = await browser.trusted_click_button(r"Save")
+        if not save_clicked:
             item["status"] = "save-not-found"
             await browser.close_dialog()
             return item
         await browser.sleep(jitter(1500, 500))
-        # Check for rate limit toast after save
         post_save = await browser.get_page_payload(2500)
         if looks_rate_limited(post_save["text"], post_save.get("url", "")):
             item["status"] = "rate-limited"
             item["rate_limited"] = True
             return item
-
-        if not await browser.click_profile_more_menu():
-            item["status"] = "verify-no-more-button"
-            return item
-        await browser.sleep(jitter(800, 300))
-        if not await browser.click_menu_item_matching(r"Add/remove.*Lists|Lists"):
-            item["status"] = "verify-no-list-option"
-            return item
-        await browser.wait_for_text([list_name, "Pick a List"], timeout=LIST_WAIT_TIMEOUT_MS)
-
-    verified = await browser.get_list_membership_state(list_name)
-    if status == "not-member" and verified == "not-selected":
-        item["status"] = "not-member"
-    elif status == "removed" and verified == "not-selected":
         item["status"] = "verified-removed"
-    elif status == "removed":
-        item["status"] = "remove-unverified"
-        item["verification_state"] = verified
-    else:
         item["status"] = status
     await browser.close_dialog()
     await browser.sleep(jitter(700, 300))
