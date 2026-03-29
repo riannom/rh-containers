@@ -185,32 +185,53 @@ async def add_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) -> 
         item["debug_snapshot"] = snapshot_lines[:20]
 
     if FORCE_ADD:
-        # Force-add: use trusted (Puppeteer) clicks for checkbox + Save.
-        # Synthetic DOM .click() passes isTrusted=false which X may ignore.
-        status = await browser.toggle_list_membership(list_name)
-        if status == "already-member":
-            await browser.remove_from_list(list_name)
-            await browser.sleep(jitter(1000, 300))
-            status = await browser.toggle_list_membership(list_name)
+        # Use trusted Puppeteer clicks for everything — synthetic DOM .click()
+        # doesn't trigger React's onChange so the Save button stays disabled.
+        import re as _re
         item["force_toggled"] = True
-        if status == "added":
-            await browser.sleep(jitter(500, 200))
-            # Use trusted click for Save — critical for X to persist the change
-            if not await browser.trusted_click_button(r"Save"):
-                # Fall back to DOM click
-                if not await browser.click_button_matching(r"^Save$"):
-                    item["status"] = "save-not-found"
-                    await browser.close_dialog()
-                    return item
-            await browser.sleep(jitter(1500, 500))
-            post_save = await browser.get_page_payload(2500)
-            if looks_rate_limited(post_save["text"], post_save.get("url", "")):
-                item["status"] = "rate-limited"
-                item["rate_limited"] = True
-                return item
-            item["status"] = "verified-added"
-        else:
-            item["status"] = status
+
+        # Find the target checkbox UID in the a11y snapshot
+        snapshot = await browser.take_a11y_snapshot()
+        target_uid = None
+        for line in snapshot.split("\n"):
+            if "checkbox" in line.lower() and list_name.lower() in line.lower():
+                uid_match = _re.search(r"\[uid=([^\]]+)\]", line)
+                if uid_match:
+                    # Check if it's already checked
+                    is_checked = "checked" in line.lower() and "not checked" not in line.lower()
+                    target_uid = uid_match.group(1)
+                    item["debug_checkbox_line"] = line.strip()
+                    item["debug_was_checked"] = is_checked
+                    break
+
+        if not target_uid:
+            item["status"] = "list-not-found-in-dialog"
+            await browser.close_dialog()
+            return item
+
+        # If already checked, uncheck first (trusted click)
+        if item.get("debug_was_checked"):
+            await browser.trusted_click(target_uid)
+            await browser.sleep(jitter(1000, 300))
+
+        # Click checkbox to check it (trusted click)
+        await browser.trusted_click(target_uid)
+        await browser.sleep(jitter(800, 300))
+
+        # Find and click Save button (trusted click)
+        save_clicked = await browser.trusted_click_button(r"Save")
+        if not save_clicked:
+            item["status"] = "save-not-found"
+            await browser.close_dialog()
+            return item
+        await browser.sleep(jitter(1500, 500))
+
+        post_save = await browser.get_page_payload(2500)
+        if looks_rate_limited(post_save["text"], post_save.get("url", "")):
+            item["status"] = "rate-limited"
+            item["rate_limited"] = True
+            return item
+        item["status"] = "verified-added"
     else:
         status = await browser.toggle_list_membership(list_name)
         if status == "added":
