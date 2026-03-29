@@ -163,53 +163,52 @@ async def main() -> None:
                 print(json.dumps(result))
                 return
 
-            # ── Phase 1: List main page — get member count from header ──
             list_url = LIST_URL.rstrip("/")
-            await browser.navigate(list_url)
-            await browser.wait_for_text(
-                ["Edit List", "Waiting for posts", "Members", "members", "Following", "lonely"],
-                timeout=20000,
-            )
-            await browser.sleep(jitter(2000, 500))
 
-            page_payload = await browser.get_page_payload(3000)
-            page_text = page_payload.get("text", "")
+            # When desired handles are provided, skip the list main page
+            # (count comes from bulk scraper) and go straight to /members.
+            # Only visit the list page when we need the count (no desired set).
+            if not desired or SKIP_MEMBERS:
+                # ── Count-only mode: visit list page for member count ──
+                await browser.navigate(list_url)
+                await browser.wait_for_text(
+                    ["Edit List", "Waiting for posts", "Members", "members", "Following", "lonely"],
+                    timeout=20000,
+                )
+                await browser.sleep(jitter(2000, 500))
 
-            if looks_rate_limited(page_text, page_payload.get("url", "")):
-                result["status"] = "error"
-                result["error"] = "rate-limited"
-                result["rate_limited"] = True
-                write_json("scrape_list_members.json", result)
-                print(json.dumps(result))
-                return
-            if looks_challenged(page_text):
-                result["status"] = "error"
-                result["error"] = "challenge-detected"
-                write_json("scrape_list_members.json", result)
-                print(json.dumps(result))
-                return
+                page_payload = await browser.get_page_payload(3000)
+                page_text = page_payload.get("text", "")
 
-            # Empty list detection
-            if looks_empty_list(page_text):
+                if looks_rate_limited(page_text, page_payload.get("url", "")):
+                    result["status"] = "error"
+                    result["error"] = "rate-limited"
+                    result["rate_limited"] = True
+                    write_json("scrape_list_members.json", result)
+                    print(json.dumps(result))
+                    return
+                if looks_challenged(page_text):
+                    result["status"] = "error"
+                    result["error"] = "challenge-detected"
+                    write_json("scrape_list_members.json", result)
+                    print(json.dumps(result))
+                    return
+
+                if looks_empty_list(page_text):
+                    result["status"] = "ok"
+                    result["member_count"] = 0
+                    result["empty_list_detected"] = True
+                    result["evidence"] = {"screenshot_path": str(OUT_DIR / "scrape_list_members.png")}
+                    await browser.screenshot(result["evidence"]["screenshot_path"], full_page=True)
+                    write_json("scrape_list_members.json", result)
+                    print(json.dumps(result))
+                    return
+
+                header_count = parse_member_count(page_text)
+                result["member_count"] = header_count if header_count is not None else 0
                 result["status"] = "ok"
-                result["member_count"] = 0
-                result["empty_list_detected"] = True
-                if desired:
-                    result["missing"] = sorted(desired)
-                result["evidence"] = {"screenshot_path": str(OUT_DIR / "scrape_list_members.png")}
-                await browser.screenshot(result["evidence"]["screenshot_path"], full_page=True)
                 write_json("scrape_list_members.json", result)
-                print(json.dumps(result))
-                return
 
-            header_count = parse_member_count(page_text)
-            result["member_count"] = header_count if header_count is not None else 0
-            result["status"] = "ok"
-            # Save after phase 1 so the count survives a phase 2 timeout
-            write_json("scrape_list_members.json", result)
-
-            # ── Phase 2: /members — validate against desired set ──
-            # Skip if caller only needs the count, or no desired set provided
             if SKIP_MEMBERS or not desired:
                 result["evidence"] = {"screenshot_path": str(OUT_DIR / "scrape_list_members.png")}
                 await browser.screenshot(result["evidence"]["screenshot_path"], full_page=True)

@@ -160,77 +160,66 @@ async def add_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) -> 
     await browser.wait_for_text([list_name, "Pick a List"], timeout=LIST_WAIT_TIMEOUT_MS)
     await browser.sleep(jitter(1200, 400))
     if FORCE_ADD:
-        # Force-add: click the checkbox twice (uncheck then recheck) regardless
-        # of current state. Uses direct DOM click both times since
-        # toggle_list_membership won't click when aria-checked is true.
-        CLICK_JS = f"""() => {{
-            const targetName = {json.dumps(list_name)}.trim().toLowerCase();
-            const rows = Array.from(document.querySelectorAll('[role="checkbox"], [aria-checked], [aria-selected]'));
-            const row = rows.find((el) => {{
-                let node = el;
-                for (let d = 0; node && d < 5; d++, node = node.parentElement) {{
-                    const t = (node.innerText || node.textContent || '').toLowerCase();
-                    if (t.includes(targetName)) return true;
-                }}
-                return false;
-            }});
-            if (!row) return 'list-not-found';
-            const ct = row.closest('[role="option"], label, li, div') || row;
-            ct.click();
-            return 'clicked';
-        }}"""
-        current_state = await browser.get_list_membership_state(list_name)
-        if current_state == "selected":
-            # Uncheck
-            await browser.evaluate(CLICK_JS)
-            await browser.sleep(jitter(1500, 500))
-            # Recheck
-            result_click = await browser.evaluate(CLICK_JS)
-            await browser.sleep(jitter(500, 200))
-            status = "added" if result_click == "clicked" else "force-add-failed"
-        else:
-            # Not checked — just click to add
-            result_click = await browser.evaluate(CLICK_JS)
-            await browser.sleep(jitter(500, 200))
-            status = "added" if result_click == "clicked" else "force-add-failed"
+        # Force-add: within the same dialog, uncheck then recheck, then Save.
+        # Single dialog session — no re-opening for verification.
+        status = await browser.toggle_list_membership(list_name)
+        if status == "already-member":
+            # Checkbox is checked (stale state). Click to uncheck.
+            await browser.remove_from_list(list_name)
+            await browser.sleep(jitter(1000, 300))
+            # Click again to recheck
+            status = await browser.toggle_list_membership(list_name)
         item["force_toggled"] = True
+        if status == "added":
+            await browser.sleep(jitter(500, 200))
+            if not await browser.click_button_matching(r"^Save$"):
+                item["status"] = "save-not-found"
+                await browser.close_dialog()
+                return item
+            await browser.sleep(jitter(1500, 500))
+            post_save = await browser.get_page_payload(2500)
+            if looks_rate_limited(post_save["text"], post_save.get("url", "")):
+                item["status"] = "rate-limited"
+                item["rate_limited"] = True
+                return item
+            item["status"] = "verified-added"
+        else:
+            item["status"] = status
     else:
         status = await browser.toggle_list_membership(list_name)
+        if status == "added":
+            await browser.sleep(jitter(500, 200))
+            if not await browser.click_button_matching(r"^Save$"):
+                item["status"] = "save-not-found"
+                await browser.close_dialog()
+                return item
+            await browser.sleep(jitter(1500, 500))
+            post_save = await browser.get_page_payload(2500)
+            if looks_rate_limited(post_save["text"], post_save.get("url", "")):
+                item["status"] = "rate-limited"
+                item["rate_limited"] = True
+                return item
 
-    if status == "added":
-        await browser.sleep(jitter(500, 200))
-        if not await browser.click_button_matching(r"^Save$"):
-            item["status"] = "save-not-found"
-            await browser.close_dialog()
-            return item
-        await browser.sleep(jitter(1500, 500))
-        # Check for rate limit toast after save
-        post_save = await browser.get_page_payload(2500)
-        if looks_rate_limited(post_save["text"], post_save.get("url", "")):
-            item["status"] = "rate-limited"
-            item["rate_limited"] = True
-            return item
+            # Re-open and confirm the membership persisted.
+            if not await browser.click_profile_more_menu():
+                item["status"] = "verify-no-more-button"
+                return item
+            await browser.sleep(jitter(800, 300))
+            if not await browser.click_menu_item_matching(r"Add/remove.*Lists|Lists"):
+                item["status"] = "verify-no-list-option"
+                return item
+            await browser.wait_for_text([list_name, "Pick a List"], timeout=LIST_WAIT_TIMEOUT_MS)
 
-        # Re-open and confirm the membership persisted.
-        if not await browser.click_profile_more_menu():
-            item["status"] = "verify-no-more-button"
-            return item
-        await browser.sleep(jitter(800, 300))
-        if not await browser.click_menu_item_matching(r"Add/remove.*Lists|Lists"):
-            item["status"] = "verify-no-list-option"
-            return item
-        await browser.wait_for_text([list_name, "Pick a List"], timeout=LIST_WAIT_TIMEOUT_MS)
-
-    verified = await browser.get_list_membership_state(list_name)
-    if status == "already-member" and verified == "selected" and not FORCE_ADD:
-        item["status"] = "already-member"
-    elif status == "added" and verified == "selected":
-        item["status"] = "verified-added"
-    elif status == "added":
-        item["status"] = "add-unverified"
-        item["verification_state"] = verified
-    else:
-        item["status"] = status
+        verified = await browser.get_list_membership_state(list_name)
+        if status == "already-member" and verified == "selected":
+            item["status"] = "already-member"
+        elif status == "added" and verified == "selected":
+            item["status"] = "verified-added"
+        elif status == "added":
+            item["status"] = "add-unverified"
+            item["verification_state"] = verified
+        else:
+            item["status"] = status
     await browser.close_dialog()
     await browser.sleep(jitter(700, 300))
 
