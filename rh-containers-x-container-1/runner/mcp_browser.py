@@ -339,6 +339,21 @@ class ChromeMCPBrowser:
         except Exception:
             return False
 
+    async def find_list_checkbox(self, list_name: str) -> tuple[str | None, bool]:
+        """Find a list checkbox in the a11y snapshot by name.
+
+        Returns (uid, is_checked) or (None, False) if not found.
+        """
+        import re as _re
+        snapshot = await self.take_a11y_snapshot()
+        for line in snapshot.split("\n"):
+            if "checkbox" in line.lower() and list_name.lower() in line.lower():
+                uid_match = _re.search(r"uid=([^\s\]\[]+)", line)
+                if uid_match:
+                    is_checked = " checked" in line.lower() and "not checked" not in line.lower()
+                    return uid_match.group(1), is_checked
+        return None, False
+
     async def trusted_click_by_name(self, pattern: str, role: str | None = None) -> bool:
         """Find an element by name/text in the a11y snapshot and click with a trusted event.
 

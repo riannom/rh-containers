@@ -183,92 +183,39 @@ async def add_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) -> 
         item["debug_checkboxes"] = checkboxes if isinstance(checkboxes, list) else []
         item["debug_snapshot"] = snapshot_lines[:20]
 
+    # Find checkbox in a11y snapshot — trusted clicks required for React onChange
+    target_uid, is_checked = await browser.find_list_checkbox(list_name)
+    if not target_uid:
+        item["status"] = "list-not-found-in-dialog"
+        await browser.close_dialog()
+        return item
+
     if FORCE_ADD:
-        # Use trusted Puppeteer clicks for everything — synthetic DOM .click()
-        # doesn't trigger React's onChange so the Save button stays disabled.
-        import re as _re
         item["force_toggled"] = True
-
-        # Find the target checkbox UID in the a11y snapshot
-        snapshot = await browser.take_a11y_snapshot()
-        target_uid = None
-        for line in snapshot.split("\n"):
-            if "checkbox" in line.lower() and list_name.lower() in line.lower():
-                # UID formats: "uid=4_19 checkbox ..." or "[uid=4_19]"
-                uid_match = _re.search(r"uid=([^\s\]\[]+)", line)
-                if uid_match:
-                    is_checked = " checked" in line.lower() and "not checked" not in line.lower()
-                    target_uid = uid_match.group(1)
-                    item["debug_checkbox_line"] = line.strip()[:150]
-                    item["debug_was_checked"] = is_checked
-                    break
-
-        if not target_uid:
-            item["status"] = "list-not-found-in-dialog"
-            await browser.close_dialog()
-            return item
-
-        # If already checked, uncheck first (trusted click)
-        if item.get("debug_was_checked"):
+        # Uncheck first if already checked (stale state), then recheck
+        if is_checked:
             await browser.trusted_click(target_uid)
             await browser.sleep(jitter(1000, 300))
-
-        # Click checkbox to check it (trusted click)
         await browser.trusted_click(target_uid)
-        await browser.sleep(jitter(800, 300))
+    elif is_checked:
+        item["status"] = "already-member"
+    else:
+        await browser.trusted_click(target_uid)
 
-        # Find and click Save button (trusted click)
-        save_clicked = await browser.trusted_click_button(r"Save")
-        if not save_clicked:
+    # Save if we toggled something
+    if item["status"] == "unknown":
+        await browser.sleep(jitter(500, 200))
+        if not await browser.trusted_click_button(r"Save"):
             item["status"] = "save-not-found"
             await browser.close_dialog()
             return item
         await browser.sleep(jitter(1500, 500))
-
         post_save = await browser.get_page_payload(2500)
         if looks_rate_limited(post_save["text"], post_save.get("url", "")):
             item["status"] = "rate-limited"
             item["rate_limited"] = True
             return item
         item["status"] = "verified-added"
-    else:
-        # Use trusted clicks via a11y snapshot — same approach as force_add
-        # Synthetic DOM .click() doesn't trigger React onChange, leaving
-        # the Save button disabled.
-        import re as _re
-        snapshot = await browser.take_a11y_snapshot()
-        target_uid = None
-        is_checked = False
-        for line in snapshot.split("\n"):
-            if "checkbox" in line.lower() and list_name.lower() in line.lower():
-                uid_match = _re.search(r"uid=([^\s\]\[]+)", line)
-                if uid_match:
-                    is_checked = " checked" in line.lower() and "not checked" not in line.lower()
-                    target_uid = uid_match.group(1)
-                    break
-
-        if not target_uid:
-            item["status"] = "list-not-found-in-dialog"
-            await browser.close_dialog()
-            return item
-
-        if is_checked:
-            item["status"] = "already-member"
-        else:
-            await browser.trusted_click(target_uid)
-            await browser.sleep(jitter(500, 200))
-            save_clicked = await browser.trusted_click_button(r"Save")
-            if not save_clicked:
-                item["status"] = "save-not-found"
-                await browser.close_dialog()
-                return item
-            await browser.sleep(jitter(1500, 500))
-            post_save = await browser.get_page_payload(2500)
-            if looks_rate_limited(post_save["text"], post_save.get("url", "")):
-                item["status"] = "rate-limited"
-                item["rate_limited"] = True
-                return item
-            item["status"] = "verified-added"
     await browser.close_dialog()
     await browser.sleep(jitter(700, 300))
 
@@ -317,20 +264,8 @@ async def remove_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) 
     await browser.wait_for_text([list_name, "Pick a List"], timeout=LIST_WAIT_TIMEOUT_MS)
     await browser.sleep(jitter(1200, 400))
 
-    # Use trusted clicks — same as add_handle. Synthetic DOM clicks
-    # don't trigger React onChange so Save stays disabled.
-    import re as _re
-    snapshot = await browser.take_a11y_snapshot()
-    target_uid = None
-    is_checked = False
-    for line in snapshot.split("\n"):
-        if "checkbox" in line.lower() and list_name.lower() in line.lower():
-            uid_match = _re.search(r"uid=([^\s\]\[]+)", line)
-            if uid_match:
-                is_checked = " checked" in line.lower() and "not checked" not in line.lower()
-                target_uid = uid_match.group(1)
-                break
-
+    # Find checkbox — trusted clicks required for React onChange
+    target_uid, is_checked = await browser.find_list_checkbox(list_name)
     if not target_uid:
         item["status"] = "list-not-found-in-dialog"
         await browser.close_dialog()
@@ -339,12 +274,9 @@ async def remove_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) 
     if not is_checked:
         item["status"] = "not-member"
     else:
-        # Uncheck with trusted click
         await browser.trusted_click(target_uid)
         await browser.sleep(jitter(500, 200))
-        # Save with trusted click
-        save_clicked = await browser.trusted_click_button(r"Save")
-        if not save_clicked:
+        if not await browser.trusted_click_button(r"Save"):
             item["status"] = "save-not-found"
             await browser.close_dialog()
             return item
