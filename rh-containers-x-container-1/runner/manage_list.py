@@ -202,9 +202,17 @@ async def add_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) -> 
     else:
         await browser.trusted_click(target_uid)
 
-    # Save if we toggled something — wait for React to re-render and enable Save
+    # Save if we toggled something — verify Save is enabled before clicking
     if item["status"] == "unknown":
         await browser.sleep(jitter(1500, 500))
+        # Check if Save is enabled — if still disabled, checkbox click didn't register
+        snapshot = await browser.take_a11y_snapshot()
+        save_disabled = any("save" in line.lower() and "disabled" in line.lower() for line in snapshot.split("\n"))
+        if save_disabled:
+            item["status"] = "save-disabled"
+            item["save_state"] = "disabled after checkbox click"
+            await browser.close_dialog()
+            return item
         if not await browser.trusted_click_button(r"Save"):
             item["status"] = "save-not-found"
             await browser.close_dialog()
