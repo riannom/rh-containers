@@ -28,10 +28,8 @@ COPY scripts/start-chrome-direct.sh /opt/bin/start-chrome-direct.sh
 COPY scripts/fix-permissions.sh /opt/bin/fix-permissions.sh
 RUN chmod +x /opt/bin/start-chrome-direct.sh /opt/bin/fix-permissions.sh
 
-# Copy infrastructure code (task executor) into the image.
-# Runner scripts are NOT in the image — they're mounted from the host
-# at runtime via docker-compose volumes. This means script changes only
-# require an rsync to the Umbrel node, not a container rebuild.
+# Infrastructure code (task executor) baked into image.
+# Runner scripts mounted from host via docker-compose volumes.
 COPY agent/ /opt/x-automation/agent/
 COPY api/ /opt/x-automation/api/
 RUN mkdir -p /opt/x-automation/tasks/{pending,active,completed,failed} \
