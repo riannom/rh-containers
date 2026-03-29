@@ -17,7 +17,8 @@ ADD = json.loads(os.environ.get("X_LIST_ADD_JSON", "[]"))
 REMOVE = json.loads(os.environ.get("X_LIST_REMOVE_JSON", "[]"))
 PRIVATE_RETRY_DAYS = int(os.environ.get("X_PRIVATE_RETRY_DAYS", "7"))
 FORCE_ADD = os.environ.get("X_MANAGE_LIST_FORCE_ADD", "").lower() in ("1", "true", "yes")
-DEBUG_DIALOG = os.environ.get("X_MANAGE_LIST_DEBUG_DIALOG", "").lower() in ("1", "true", "yes")
+# Temporarily hardcode debug mode ON until we figure out the checkbox issue
+DEBUG_DIALOG = True
 PER_HANDLE_TIMEOUT_SECONDS = int(os.environ.get("X_MANAGE_LIST_PER_HANDLE_TIMEOUT", "75"))
 SESSION_TIMEOUT_SECONDS = int(os.environ.get("X_MANAGE_LIST_SESSION_TIMEOUT", "240"))
 PROFILE_WAIT_TIMEOUT_MS = int(
