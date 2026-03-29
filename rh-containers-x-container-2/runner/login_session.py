@@ -11,10 +11,8 @@ import time
 from pathlib import Path
 
 from mcp_browser import ChromeMCPBrowser, SET_NATIVE_VALUE_JS, looks_logged_in, looks_challenged
+from shared import OUT_DIR, write_json, resolve_browser_url
 
-
-OUT_DIR = Path(os.environ.get("X_AUTOMATION_OUT_DIR", Path(__file__).resolve().parent.parent / "out"))
-OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 CREDENTIALS_PATH = Path(
     os.environ.get("X_CREDENTIALS_PATH", Path(__file__).resolve().parent.parent / "state" / "x_credentials.json")
@@ -31,10 +29,6 @@ def generate_totp(secret_b32: str, period: int = 30) -> str:
     offset = mac[-1] & 0x0F
     code = struct.unpack(">I", mac[offset : offset + 4])[0] & 0x7FFFFFFF
     return f"{code % 1000000:06d}"
-
-
-def write_json(name: str, payload: dict) -> None:
-    (OUT_DIR / name).write_text(json.dumps(payload, indent=2))
 
 
 def load_credentials(account_handle: str) -> dict | None:
@@ -125,7 +119,7 @@ async def main() -> None:
         "step_reached": "init",
         "error": None,
     }
-    browser_url = os.environ.get("BROWSER_URL") or os.environ.get("CDP_URL") or "http://127.0.0.1:9222"
+    browser_url = resolve_browser_url()
     account_handle = os.environ.get("X_ACCOUNT_HANDLE") or os.environ.get("BROWSER_POOL_ACCOUNT")
 
     if not account_handle:

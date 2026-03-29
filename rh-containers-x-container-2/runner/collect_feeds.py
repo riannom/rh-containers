@@ -8,9 +8,9 @@ import re
 from pathlib import Path
 
 from mcp_browser import ChromeMCPBrowser, looks_logged_in, scroll_and_collect
+from shared import OUT_DIR, write_json, resolve_browser_url
 
 
-OUT_DIR = Path(os.environ.get("X_AUTOMATION_OUT_DIR", Path(__file__).resolve().parent.parent / "out"))
 SEEN_IDS_FILE = Path(os.environ["X_SEEN_IDS_FILE"]) if os.environ.get("X_SEEN_IDS_FILE") else None
 LIST_URLS = json.loads(os.environ.get("X_LIST_URLS_JSON", "[]"))
 LIST_LABELS = json.loads(os.environ.get("X_LIST_LABELS_JSON", "[]"))
@@ -18,12 +18,6 @@ COLLECT_FEED = os.environ.get("X_COLLECT_FEED") == "1"
 MAX_SCROLLS = int(os.environ.get("X_MAX_SCROLLS", "8"))
 MAX_SCROLLS_MIN = int(os.environ.get("X_MAX_SCROLLS_MIN", str(MAX_SCROLLS)))
 MAX_SCROLLS_MAX = int(os.environ.get("X_MAX_SCROLLS_MAX", str(MAX_SCROLLS)))
-
-OUT_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def write_json(name: str, payload: dict) -> None:
-    (OUT_DIR / name).write_text(json.dumps(payload, indent=2))
 
 
 def load_seen_ids() -> set[str]:
@@ -133,7 +127,7 @@ async def main() -> None:
         "total_posts": 0,
         "collection_method": "feed",
     }
-    browser_url = os.environ.get("BROWSER_URL") or os.environ.get("CDP_URL") or "http://127.0.0.1:9222"
+    browser_url = resolve_browser_url()
     seen_ids = load_seen_ids()
 
     try:

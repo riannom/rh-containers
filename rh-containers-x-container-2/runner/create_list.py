@@ -3,21 +3,14 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from pathlib import Path
 
 from mcp_browser import ChromeMCPBrowser, looks_logged_in, jitter
+from shared import OUT_DIR, write_json, resolve_browser_url
 
-
-OUT_DIR = Path(os.environ.get("X_AUTOMATION_OUT_DIR", Path(__file__).resolve().parent.parent / "out"))
-OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 LIST_NAME = str(os.environ.get("X_LIST_NAME", "")).strip()
 LIST_DESC = str(os.environ.get("X_LIST_DESC", "")).strip()
 LIST_PRIVATE = str(os.environ.get("X_LIST_PRIVATE", "1")).strip() != "0"
-
-
-def write_json(name: str, payload: dict) -> None:
-    (OUT_DIR / name).write_text(json.dumps(payload, indent=2))
 
 
 async def _fill_create_form(browser: ChromeMCPBrowser) -> dict:
@@ -91,7 +84,7 @@ async def main() -> None:
         "list_description": LIST_DESC,
         "list_private": LIST_PRIVATE,
     }
-    browser_url = os.environ.get("BROWSER_URL") or os.environ.get("CDP_URL") or "http://127.0.0.1:9222"
+    browser_url = resolve_browser_url()
 
     if not LIST_NAME:
         result["status"] = "fail"

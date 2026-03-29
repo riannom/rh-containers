@@ -1,15 +1,13 @@
 """Debug: open the Add to List dialog for a handle and dump checkbox state + a11y snapshot."""
 from __future__ import annotations
 import asyncio, json, os
-from pathlib import Path
 from mcp_browser import ChromeMCPBrowser, looks_logged_in, jitter
+from shared import OUT_DIR, resolve_browser_url
 
-OUT_DIR = Path(os.environ.get("X_AUTOMATION_OUT_DIR", Path(__file__).resolve().parent.parent / "out"))
 HANDLE = os.environ.get("X_DEBUG_HANDLE", "bbands")
-OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 async def main():
-    browser_url = os.environ.get("BROWSER_URL") or "http://127.0.0.1:9222"
+    browser_url = resolve_browser_url()
     result = {"handle": HANDLE, "checkboxes": [], "snapshot_excerpt": ""}
 
     async with ChromeMCPBrowser(browser_url) as browser:

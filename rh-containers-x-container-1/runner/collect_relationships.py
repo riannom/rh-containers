@@ -5,12 +5,11 @@ import json
 import os
 import random
 import re
-from pathlib import Path
 
 from mcp_browser import ChromeMCPBrowser, looks_challenged, looks_logged_in, jitter
+from shared import OUT_DIR, write_json, resolve_browser_url
 
 
-OUT_DIR = Path(os.environ.get("X_AUTOMATION_OUT_DIR", Path(__file__).resolve().parent.parent / "out"))
 HANDLES = json.loads(os.environ.get("X_REL_HANDLES_JSON", "[]"))
 MAX_PROFILE_SCROLLS = int(os.environ.get("X_REL_PROFILE_SCROLLS", "2"))
 MAX_EDGE_SCROLLS = int(os.environ.get("X_REL_EDGE_SCROLLS", "5"))
@@ -20,11 +19,6 @@ MAX_EDGE_SCROLLS_MIN = int(os.environ.get("X_REL_EDGE_SCROLLS_MIN", str(MAX_EDGE
 MAX_EDGE_SCROLLS_MAX = int(os.environ.get("X_REL_EDGE_SCROLLS_MAX", str(MAX_EDGE_SCROLLS)))
 EDGE_LIMIT = int(os.environ.get("X_REL_EDGE_LIMIT", "100"))
 DIRECTION = os.environ.get("X_REL_DIRECTION", "both")
-OUT_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def write_json(name: str, payload: dict) -> None:
-    (OUT_DIR / name).write_text(json.dumps(payload, indent=2))
 
 
 def unavailable(body: str) -> bool:
@@ -73,7 +67,7 @@ async def main() -> None:
         "handle_results": [],
         "handle_errors": [],
     }
-    browser_url = os.environ.get("BROWSER_URL") or os.environ.get("CDP_URL") or "http://127.0.0.1:9222"
+    browser_url = resolve_browser_url()
 
     try:
         async with ChromeMCPBrowser(browser_url) as browser:

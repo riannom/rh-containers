@@ -2,23 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
-from pathlib import Path
 
 from mcp_browser import ChromeMCPBrowser, looks_logged_in
-
-
-OUT_DIR = Path(os.environ.get("X_AUTOMATION_OUT_DIR", Path(__file__).resolve().parent.parent / "out"))
-OUT_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def write_json(name: str, payload: dict) -> None:
-    (OUT_DIR / name).write_text(json.dumps(payload, indent=2))
+from shared import OUT_DIR, write_json, resolve_browser_url
 
 
 async def main() -> None:
     result = {"status": "unknown", "task_type": "verify_session"}
-    browser_url = os.environ.get("BROWSER_URL") or os.environ.get("CDP_URL") or "http://127.0.0.1:9222"
+    browser_url = resolve_browser_url()
 
     try:
         async with ChromeMCPBrowser(browser_url) as browser:

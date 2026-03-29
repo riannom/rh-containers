@@ -20,22 +20,15 @@ import json
 import os
 import re
 import traceback
-from pathlib import Path
 
 from mcp_browser import ChromeMCPBrowser, looks_challenged, looks_logged_in, looks_rate_limited, jitter
+from shared import OUT_DIR, write_json, resolve_browser_url
 
-OUT_DIR = Path(os.environ.get("X_AUTOMATION_OUT_DIR", Path(__file__).resolve().parent.parent / "out"))
 LIST_URL = os.environ.get("X_LIST_URL", "")
 DESIRED_HANDLES_JSON = os.environ.get("X_DESIRED_HANDLES_JSON", "[]")
 SKIP_MEMBERS = os.environ.get("X_SCRAPE_SKIP_MEMBERS", "").lower() in ("1", "true", "yes")
 MAX_SCROLLS = int(os.environ.get("X_SCRAPE_MAX_SCROLLS", "200"))
 SESSION_TIMEOUT_SECONDS = int(os.environ.get("X_SCRAPE_SESSION_TIMEOUT", "300"))
-
-OUT_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def write_json(name: str, payload: dict) -> None:
-    (OUT_DIR / name).write_text(json.dumps(payload, indent=2))
 
 
 def parse_member_count(text: str) -> int | None:
@@ -163,7 +156,7 @@ async def main() -> None:
         "list_url": LIST_URL,
         "member_count": 0,
     }
-    browser_url = os.environ.get("BROWSER_URL") or os.environ.get("CDP_URL") or "http://127.0.0.1:9222"
+    browser_url = resolve_browser_url()
 
     try:
         async with ChromeMCPBrowser(browser_url) as browser:

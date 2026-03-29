@@ -8,9 +8,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from mcp_browser import ChromeMCPBrowser, looks_challenged, looks_logged_in, looks_rate_limited, jitter
+from shared import OUT_DIR, write_json, resolve_browser_url
 
 
-OUT_DIR = Path(os.environ.get("X_AUTOMATION_OUT_DIR", Path(__file__).resolve().parent.parent / "out"))
 STATE_DIR = Path(os.environ.get("X_AUTOMATION_STATE_DIR", Path(__file__).resolve().parent.parent / "state"))
 LIST_URL = os.environ.get("X_LIST_URL", "")
 ADD = json.loads(os.environ.get("X_LIST_ADD_JSON", "[]"))
@@ -45,12 +45,7 @@ LIST_CONFIG_PATHS = [
     LIST_CONFIG_DIR / "feed_lists_breadth_config.json",
     LIST_CONFIG_DIR / "feed_lists_outlier_config.json",
 ]
-OUT_DIR.mkdir(parents=True, exist_ok=True)
 STATE_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def write_json(name: str, payload: dict) -> None:
-    (OUT_DIR / name).write_text(json.dumps(payload, indent=2))
 
 
 def utc_now() -> datetime:
@@ -310,7 +305,7 @@ async def main() -> None:
         "removed": [],
         "failed": [],
     }
-    browser_url = os.environ.get("BROWSER_URL") or os.environ.get("CDP_URL") or "http://127.0.0.1:9222"
+    browser_url = resolve_browser_url()
 
     try:
         async with ChromeMCPBrowser(browser_url) as browser:

@@ -18,21 +18,14 @@ import json
 import os
 import re
 import traceback
-from pathlib import Path
 
 from mcp_browser import ChromeMCPBrowser, looks_challenged, looks_logged_in, looks_rate_limited, jitter
+from shared import OUT_DIR, write_json, resolve_browser_url
 
-OUT_DIR = Path(os.environ.get("X_AUTOMATION_OUT_DIR", Path(__file__).resolve().parent.parent / "out"))
 ACCOUNT_HANDLE = os.environ.get("X_ACCOUNT_HANDLE", "")
 # Optional: map list URLs to labels so we can match by URL href on the page
 LIST_URLS_JSON = os.environ.get("X_LIST_URLS_JSON", "{}")
 SESSION_TIMEOUT_SECONDS = int(os.environ.get("X_SCRAPE_SESSION_TIMEOUT", "60"))
-
-OUT_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def write_json(name: str, payload: dict) -> None:
-    (OUT_DIR / name).write_text(json.dumps(payload, indent=2))
 
 
 def extract_list_id(url: str) -> str | None:
@@ -48,7 +41,7 @@ async def main() -> None:
         "account": ACCOUNT_HANDLE,
         "counts": {},
     }
-    browser_url = os.environ.get("BROWSER_URL") or os.environ.get("CDP_URL") or "http://127.0.0.1:9222"
+    browser_url = resolve_browser_url()
     label_to_list_id: dict[str, str] = {}
     try:
         urls_map = json.loads(LIST_URLS_JSON)
@@ -101,8 +94,9 @@ async def main() -> None:
             )
             await browser.sleep(jitter(2000, 500))
 
-            # Scroll down to load all lists — some may be below the fold
-            for _ in range(5):
+            # Scroll down to load all lists — some may be below the fold.
+            # Two scrolls is enough for most accounts (4-8 lists).
+            for _ in range(2):
                 await browser.scroll_page()
                 await browser.sleep(jitter(1000, 300))
 
