@@ -353,7 +353,7 @@ class ChromeMCPBrowser:
             if regex.search(line):
                 if role and role.lower() not in line.lower():
                     continue
-                uid_match = _re.search(r"\[uid=([^\]]+)\]", line)
+                uid_match = _re.search(r"uid=([^\s\]\[]+)", line)
                 if uid_match:
                     return await self.trusted_click(uid_match.group(1))
         return False

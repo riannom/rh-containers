@@ -195,12 +195,12 @@ async def add_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) -> 
         target_uid = None
         for line in snapshot.split("\n"):
             if "checkbox" in line.lower() and list_name.lower() in line.lower():
-                uid_match = _re.search(r"\[uid=([^\]]+)\]", line)
+                # UID formats: "uid=4_19 checkbox ..." or "[uid=4_19]"
+                uid_match = _re.search(r"uid=([^\s\]\[]+)", line)
                 if uid_match:
-                    # Check if it's already checked
-                    is_checked = "checked" in line.lower() and "not checked" not in line.lower()
+                    is_checked = " checked" in line.lower() and "not checked" not in line.lower()
                     target_uid = uid_match.group(1)
-                    item["debug_checkbox_line"] = line.strip()
+                    item["debug_checkbox_line"] = line.strip()[:150]
                     item["debug_was_checked"] = is_checked
                     break
 
