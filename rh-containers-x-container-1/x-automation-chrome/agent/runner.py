@@ -153,6 +153,8 @@ def _build_env(task: dict) -> dict[str, str]:
             env["X_MANAGE_LIST_PER_HANDLE_TIMEOUT"] = str(params["per_handle_timeout"])
         if "session_timeout" in params:
             env["X_MANAGE_LIST_SESSION_TIMEOUT"] = str(params["session_timeout"])
+        if params.get("force_add"):
+            env["X_MANAGE_LIST_FORCE_ADD"] = "1"
     elif task_type == "vet_candidate":
         env["X_VET_HANDLES_JSON"] = json.dumps(params.get("handles", []))
         env["X_VET_MAX_SCROLLS"] = str(params.get("max_scrolls", 6))

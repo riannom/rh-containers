@@ -4,7 +4,7 @@ name: X Container 1
 tagline: Headless Chrome browser for X automation
 category: developer
 icon: https://raw.githubusercontent.com/riannom/rh-containers/main/rh-containers-x-container-1/icon.svg
-version: "1.4.24"
+version: "1.4.25"
 port: 18001
 description: >-
   Self-contained headless Chrome container for X/Twitter automation.
