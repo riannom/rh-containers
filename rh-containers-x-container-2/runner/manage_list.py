@@ -17,7 +17,7 @@ ADD = json.loads(os.environ.get("X_LIST_ADD_JSON", "[]"))
 REMOVE = json.loads(os.environ.get("X_LIST_REMOVE_JSON", "[]"))
 PRIVATE_RETRY_DAYS = int(os.environ.get("X_PRIVATE_RETRY_DAYS", "7"))
 FORCE_ADD = os.environ.get("X_MANAGE_LIST_FORCE_ADD", "").lower() in ("1", "true", "yes")
-DEBUG_DIALOG = True  # temp: investigating tier-a-tactical add failure on worker1
+DEBUG_DIALOG = os.environ.get("X_MANAGE_LIST_DEBUG_DIALOG", "").lower() in ("1", "true", "yes")
 PER_HANDLE_TIMEOUT_SECONDS = int(os.environ.get("X_MANAGE_LIST_PER_HANDLE_TIMEOUT", "75"))
 SESSION_TIMEOUT_SECONDS = int(os.environ.get("X_MANAGE_LIST_SESSION_TIMEOUT", "240"))
 PROFILE_WAIT_TIMEOUT_MS = int(
@@ -202,9 +202,9 @@ async def add_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) -> 
     else:
         await browser.trusted_click(target_uid)
 
-    # Save if we toggled something
+    # Save if we toggled something — wait for React to re-render and enable Save
     if item["status"] == "unknown":
-        await browser.sleep(jitter(500, 200))
+        await browser.sleep(jitter(1500, 500))
         if not await browser.trusted_click_button(r"Save"):
             item["status"] = "save-not-found"
             await browser.close_dialog()
