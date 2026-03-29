@@ -339,18 +339,28 @@ class ChromeMCPBrowser:
         except Exception:
             return False
 
-    async def trusted_click_button(self, pattern: str) -> bool:
-        """Find a button by name in the a11y snapshot and click it with a trusted event."""
+    async def trusted_click_by_name(self, pattern: str, role: str | None = None) -> bool:
+        """Find an element by name/text in the a11y snapshot and click with a trusted event.
+
+        Args:
+            pattern: regex to match against the snapshot line text
+            role: optional role filter (e.g. 'button', 'checkbox', 'option')
+        """
         import re as _re
         snapshot = await self.take_a11y_snapshot()
         regex = _re.compile(pattern, _re.IGNORECASE)
-        # Snapshot format: lines like "- button 'Save' [uid=abc123]"
         for line in snapshot.split("\n"):
             if regex.search(line):
+                if role and role.lower() not in line.lower():
+                    continue
                 uid_match = _re.search(r"\[uid=([^\]]+)\]", line)
                 if uid_match:
                     return await self.trusted_click(uid_match.group(1))
         return False
+
+    async def trusted_click_button(self, pattern: str) -> bool:
+        """Find a button by name and click with a trusted event."""
+        return await self.trusted_click_by_name(pattern, role="button")
 
     async def click_button_matching(self, pattern: str) -> bool:
         return bool(
