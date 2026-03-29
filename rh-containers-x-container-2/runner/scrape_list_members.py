@@ -62,17 +62,43 @@ def looks_empty_list(text: str) -> bool:
 
 
 async def collect_member_handles(browser: ChromeMCPBrowser, limit: int = 500) -> list[str]:
-    """Extract handles from visible UserCell elements on the page."""
+    """Extract handles from visible UserCell elements on the page.
+
+    Filters out UserCells that appear after a "Who to follow" or "Suggested"
+    heading — X injects recommended accounts into the member list that are
+    not actual list members.
+    """
     data = await browser.evaluate(
         f"""() => {{
             const cards = Array.from(document.querySelectorAll('[data-testid="UserCell"]')).slice(0, {limit});
-            return cards.map((card) => {{
+            const results = [];
+            for (const card of cards) {{
+                // Skip cards inside a "Who to follow" / "Suggested" section.
+                // Walk up the DOM to check for suggestion headings.
+                let el = card;
+                let isSuggestion = false;
+                while (el && el !== document.body) {{
+                    const text = el.textContent || '';
+                    // Check sibling headings or parent containers for suggestion labels
+                    const prev = el.previousElementSibling;
+                    if (prev) {{
+                        const prevText = prev.textContent || '';
+                        if (/who to follow|suggested|you might like/i.test(prevText)) {{
+                            isSuggestion = true;
+                            break;
+                        }}
+                    }}
+                    el = el.parentElement;
+                }}
+                if (isSuggestion) continue;
+
                 const links = Array.from(card.querySelectorAll('a[href]'))
                     .map((link) => link.getAttribute('href'))
                     .filter(Boolean);
                 const profileHref = links.find((href) => /^\\/[A-Za-z0-9_]+$/.test(href));
-                return profileHref ? profileHref.slice(1).toLowerCase() : null;
-            }}).filter(Boolean);
+                if (profileHref) results.push(profileHref.slice(1).toLowerCase());
+            }}
+            return results;
         }}"""
     )
     return data if isinstance(data, list) else []
