@@ -17,6 +17,7 @@ ADD = json.loads(os.environ.get("X_LIST_ADD_JSON", "[]"))
 REMOVE = json.loads(os.environ.get("X_LIST_REMOVE_JSON", "[]"))
 PRIVATE_RETRY_DAYS = int(os.environ.get("X_PRIVATE_RETRY_DAYS", "7"))
 FORCE_ADD = os.environ.get("X_MANAGE_LIST_FORCE_ADD", "").lower() in ("1", "true", "yes")
+DEBUG_DIALOG = os.environ.get("X_MANAGE_LIST_DEBUG_DIALOG", "").lower() in ("1", "true", "yes")
 PER_HANDLE_TIMEOUT_SECONDS = int(os.environ.get("X_MANAGE_LIST_PER_HANDLE_TIMEOUT", "75"))
 SESSION_TIMEOUT_SECONDS = int(os.environ.get("X_MANAGE_LIST_SESSION_TIMEOUT", "240"))
 PROFILE_WAIT_TIMEOUT_MS = int(
@@ -159,6 +160,29 @@ async def add_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) -> 
             return item
     await browser.wait_for_text([list_name, "Pick a List"], timeout=LIST_WAIT_TIMEOUT_MS)
     await browser.sleep(jitter(1200, 400))
+
+    if DEBUG_DIALOG:
+        # Dump checkbox state and a11y snapshot for debugging
+        checkboxes = await browser.evaluate("""() => {
+            const rows = Array.from(document.querySelectorAll('[role="checkbox"], [aria-checked], [aria-selected]'));
+            return rows.map((el, i) => {
+                let node = el;
+                let texts = [];
+                for (let d = 0; node && d < 3; d++, node = node.parentElement) {
+                    texts.push((node.innerText || '').trim().substring(0, 80));
+                }
+                return {
+                    index: i,
+                    ariaChecked: el.getAttribute('aria-checked'),
+                    texts: texts,
+                };
+            });
+        }""")
+        snapshot = await browser.take_a11y_snapshot()
+        snapshot_lines = [l for l in snapshot.split("\n") if any(k in l.lower() for k in ["check", "list", "save", "tier", "macro", "tactical", "option"])]
+        item["debug_checkboxes"] = checkboxes if isinstance(checkboxes, list) else []
+        item["debug_snapshot"] = snapshot_lines[:20]
+
     if FORCE_ADD:
         # Force-add: use trusted (Puppeteer) clicks for checkbox + Save.
         # Synthetic DOM .click() passes isTrusted=false which X may ignore.
