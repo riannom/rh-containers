@@ -160,22 +160,23 @@ async def add_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) -> 
     await browser.wait_for_text([list_name, "Pick a List"], timeout=LIST_WAIT_TIMEOUT_MS)
     await browser.sleep(jitter(1200, 400))
     if FORCE_ADD:
-        # Force-add: within the same dialog, uncheck then recheck, then Save.
-        # Single dialog session — no re-opening for verification.
+        # Force-add: use trusted (Puppeteer) clicks for checkbox + Save.
+        # Synthetic DOM .click() passes isTrusted=false which X may ignore.
         status = await browser.toggle_list_membership(list_name)
         if status == "already-member":
-            # Checkbox is checked (stale state). Click to uncheck.
             await browser.remove_from_list(list_name)
             await browser.sleep(jitter(1000, 300))
-            # Click again to recheck
             status = await browser.toggle_list_membership(list_name)
         item["force_toggled"] = True
         if status == "added":
             await browser.sleep(jitter(500, 200))
-            if not await browser.click_button_matching(r"^Save$"):
-                item["status"] = "save-not-found"
-                await browser.close_dialog()
-                return item
+            # Use trusted click for Save — critical for X to persist the change
+            if not await browser.trusted_click_button(r"Save"):
+                # Fall back to DOM click
+                if not await browser.click_button_matching(r"^Save$"):
+                    item["status"] = "save-not-found"
+                    await browser.close_dialog()
+                    return item
             await browser.sleep(jitter(1500, 500))
             post_save = await browser.get_page_payload(2500)
             if looks_rate_limited(post_save["text"], post_save.get("url", "")):

@@ -322,6 +322,36 @@ class ChromeMCPBrowser:
             )
         )
 
+    async def take_a11y_snapshot(self) -> str:
+        """Take an accessibility tree snapshot. Returns text with UIDs."""
+        result = await self.call("take_snapshot", {"verbose": False})
+        return _result_text(result)
+
+    async def trusted_click(self, uid: str) -> bool:
+        """Click an element by UID using Puppeteer (trusted event).
+
+        Unlike evaluate-based .click(), this dispatches a real mouse event
+        that passes X's isTrusted checks.
+        """
+        try:
+            await self.call("click", {"uid": uid})
+            return True
+        except Exception:
+            return False
+
+    async def trusted_click_button(self, pattern: str) -> bool:
+        """Find a button by name in the a11y snapshot and click it with a trusted event."""
+        import re as _re
+        snapshot = await self.take_a11y_snapshot()
+        regex = _re.compile(pattern, _re.IGNORECASE)
+        # Snapshot format: lines like "- button 'Save' [uid=abc123]"
+        for line in snapshot.split("\n"):
+            if regex.search(line):
+                uid_match = _re.search(r"\[uid=([^\]]+)\]", line)
+                if uid_match:
+                    return await self.trusted_click(uid_match.group(1))
+        return False
+
     async def click_button_matching(self, pattern: str) -> bool:
         return bool(
             await self.evaluate(
