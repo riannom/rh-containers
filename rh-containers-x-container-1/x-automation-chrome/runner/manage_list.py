@@ -159,17 +159,32 @@ async def add_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) -> 
             return item
     await browser.wait_for_text([list_name, "Pick a List"], timeout=LIST_WAIT_TIMEOUT_MS)
     await browser.sleep(jitter(1200, 400))
-    status = await browser.toggle_list_membership(list_name)
-
-    # Force-add mode: if the checkbox says "already-member" but we don't
-    # trust it (stale X UI state), uncheck then recheck to force re-add.
-    if status == "already-member" and FORCE_ADD:
-        # Uncheck (remove from list)
-        await browser.toggle_list_membership(list_name)
-        await browser.sleep(jitter(500, 200))
-        # Recheck (add back)
+    if FORCE_ADD:
+        # Force-add: click the checkbox regardless of state to uncheck,
+        # then click again to recheck, ensuring X re-registers the add.
+        # This works around stale aria-checked state in X's dialog.
+        current_state = await browser.get_list_membership_state(list_name)
+        if current_state == "selected":
+            # Uncheck first
+            await browser.evaluate(f"""() => {{
+                const targetName = {json.dumps(list_name)}.trim().toLowerCase();
+                const rows = Array.from(document.querySelectorAll('[role="checkbox"], [aria-checked], [aria-selected]'));
+                const row = rows.find((el) => {{
+                    let node = el;
+                    for (let d = 0; node && d < 5; d++, node = node.parentElement) {{
+                        const t = (node.innerText || node.textContent || '').toLowerCase();
+                        if (t.includes(targetName)) return true;
+                    }}
+                    return false;
+                }});
+                if (row) {{ const ct = row.closest('[role="option"], label, li, div') || row; ct.click(); }}
+            }}""")
+            await browser.sleep(jitter(800, 300))
+        # Now click to add (checkbox should be unchecked)
         status = await browser.toggle_list_membership(list_name)
         item["force_toggled"] = True
+    else:
+        status = await browser.toggle_list_membership(list_name)
 
     if status == "added":
         await browser.sleep(jitter(500, 200))
