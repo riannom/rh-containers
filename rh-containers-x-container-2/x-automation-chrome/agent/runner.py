@@ -12,7 +12,10 @@ import subprocess
 import shutil
 from pathlib import Path
 
-from agent.task_registry import script_for, output_file_for
+try:
+    from agent.task_registry import script_for, output_file_for
+except ImportError:
+    from task_registry import script_for, output_file_for
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
