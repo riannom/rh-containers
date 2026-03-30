@@ -23,6 +23,11 @@ TASKS: dict[str, dict] = {
         "script": "collect_relationships.py",
         "output": "collect_relationships.json",
     },
+    "search_research": {
+        "type": "read-only",
+        "script": "search_research.js",
+        "output": "search_research.json",
+    },
     "pull_avatars": {
         "type": "read-only",
         "script": "pull_avatars.py",

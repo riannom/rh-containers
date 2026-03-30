@@ -82,6 +82,9 @@ def _build_env(task: dict) -> dict[str, str]:
         if "max_scrolls_max" in params:
             env["X_MAX_SCROLLS_MAX"] = str(params["max_scrolls_max"])
         env["X_SEEN_IDS_FILE"] = os.environ.get("X_SEEN_IDS_FILE_OVERRIDE", str(SEEN_IDS_FILE))
+    elif task_type == "search_research":
+        env["X_QUERY"] = str(params.get("query", ""))
+        env["X_LIMIT"] = str(params.get("limit", 10))
     elif task_type == "collect_relationships":
         env["X_REL_HANDLES_JSON"] = json.dumps(params.get("handles", []))
         env["X_REL_DIRECTION"] = str(params.get("direction", "both"))
