@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import traceback
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -111,6 +112,16 @@ def resolve_list_name(list_url: str) -> str | None:
     return None
 
 
+def _looks_list_mutation_denied(body: str) -> bool:
+    return bool(
+        re.search(
+            r"not allowed to add|not allowed to .*list|can't add to .*list|cannot add to .*list|unable to add to .*list|not allowed to update this list",
+            body,
+            re.I,
+        )
+    )
+
+
 async def add_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) -> dict:
     item = {"handle": handle, "status": "unknown"}
     await browser.navigate(f"https://x.com/{handle}")
@@ -204,7 +215,21 @@ async def add_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) -> 
         snapshot = await browser.take_a11y_snapshot()
         save_disabled = any("save" in line.lower() and "disabled" in line.lower() for line in snapshot.split("\n"))
         if save_disabled:
-            item["status"] = "save-disabled"
+            dialog_payload = await browser.get_page_payload(1500)
+            body = dialog_payload.get("text", "")
+            if looks_rate_limited(body, dialog_payload.get("url", "")):
+                item["status"] = "rate-limited"
+                item["rate_limited"] = True
+            elif looks_challenged(body):
+                item["status"] = "challenge-detected"
+            elif _looks_list_mutation_denied(body):
+                item["status"] = "list-mutation-denied"
+                item["mutation_denied"] = True
+            else:
+                # On X list rate limiting, the dialog often leaves Save disabled
+                # with no visible modal through this automation path.
+                item["status"] = "list-mutation-denied"
+                item["mutation_denied"] = True
             item["save_state"] = "disabled after checkbox click"
             await browser.close_dialog()
             return item
@@ -217,6 +242,19 @@ async def add_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) -> 
         if looks_rate_limited(post_save["text"], post_save.get("url", "")):
             item["status"] = "rate-limited"
             item["rate_limited"] = True
+            return item
+        if looks_challenged(post_save["text"]):
+            item["status"] = "challenge-detected"
+            return item
+        if _looks_list_mutation_denied(post_save["text"]):
+            item["status"] = "list-mutation-denied"
+            item["mutation_denied"] = True
+            return item
+        post_state = await browser.get_list_membership_state(list_name)
+        item["post_save_membership_state"] = post_state
+        if post_state != "selected":
+            item["status"] = "list-mutation-denied"
+            item["mutation_denied"] = True
             return item
         item["status"] = "verified-added"
     await browser.close_dialog()
@@ -387,6 +425,13 @@ async def main() -> None:
                     result["status"] = "error"
                     result["error"] = "rate-limited"
                     result["rate_limited"] = True
+                    result["failed"].append(item)
+                    break
+                elif item["status"] == "list-mutation-denied":
+                    result["status"] = "error"
+                    result["error"] = "list-mutation-denied"
+                    result["rate_limited"] = True
+                    result["mutation_denied"] = True
                     result["failed"].append(item)
                     break
                 elif item["status"] == "challenge-detected":
