@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 
-from mcp_browser import ChromeMCPBrowser, looks_challenged, looks_logged_in, looks_rate_limited
+from mcp_browser import ChromeMCPBrowser, looks_challenged, looks_logged_in, looks_rate_limited, looks_signed_out
 from shared import OUT_DIR, write_json, resolve_browser_url
 
 
@@ -56,8 +56,10 @@ async def main() -> None:
                 result["error"] = "rate-limited"
             elif looks_challenged(body):
                 result["error"] = "challenge-required"
-            elif not result["logged_in"]:
+            elif looks_signed_out(body):
                 result["error"] = "session-not-authenticated"
+            elif not result["logged_in"]:
+                result["error"] = "session-probe-inconclusive"
             result["status"] = "ok"
             result["evidence"] = {
                 "screenshot_path": str(OUT_DIR / "verify_session.png"),

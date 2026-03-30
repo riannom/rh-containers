@@ -81,6 +81,16 @@ def looks_logged_in(body: str) -> bool:
     )
 
 
+def looks_signed_out(body: str) -> bool:
+    return bool(
+        re.search(
+            r"Sign in to X|Phone, email, or username|Don't have an account\?|Create account|Sign up",
+            body,
+            re.I,
+        )
+    )
+
+
 def looks_challenged(body: str) -> bool:
     # Note: "Something went wrong. Try reloading" is a generic X error, not a
     # challenge/CAPTCHA. Including it caused false positives on transient page
