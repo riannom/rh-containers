@@ -15,6 +15,8 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
+from agent.task_registry import READ_ONLY_TASKS, MUTATING_TASKS, ALL_TASKS
+
 TASKS_DIR = Path(__file__).resolve().parent.parent / "tasks"
 PENDING = TASKS_DIR / "pending"
 ACTIVE = TASKS_DIR / "active"
@@ -22,23 +24,6 @@ COMPLETED = TASKS_DIR / "completed"
 FAILED = TASKS_DIR / "failed"
 
 POLL_INTERVAL = 2  # seconds
-
-READ_ONLY_TASKS = {
-    "verify_session",
-    "create_list",
-    "collect_feeds",
-    "collect_relationships",
-    "pull_avatars",
-    "vet_candidate",
-    "scrape_list_members",
-    "scrape_list_counts",
-    "scrape_following",
-}
-MUTATING_TASKS = {
-    "follow_accounts",
-    "manage_list",
-}
-ALL_TASKS = READ_ONLY_TASKS | MUTATING_TASKS
 
 
 def validate_task(task: dict) -> dict:
@@ -94,10 +79,6 @@ def validate_task(task: dict) -> dict:
         list_url = params.get("list_url")
         if not isinstance(list_url, str) or not list_url.strip():
             raise ValueError("scrape_list_members requires params.list_url")
-    elif task_type == "scrape_list_counts":
-        account = params.get("account_handle")
-        if not isinstance(account, str) or not account.strip():
-            raise ValueError("scrape_list_counts requires params.account_handle")
     elif task_type == "scrape_following":
         account = params.get("account")
         if not isinstance(account, str) or not account.strip():

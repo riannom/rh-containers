@@ -12,6 +12,8 @@ import subprocess
 import shutil
 from pathlib import Path
 
+from agent.task_registry import script_for, output_file_for
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 RUNNER_DIR = BASE_DIR / "runner"
@@ -19,20 +21,6 @@ OUT_DIR = BASE_DIR / "out"
 STATE_DIR = BASE_DIR / "state"
 SEEN_IDS_FILE = STATE_DIR / "seen_tweet_ids.json"
 VENV_PYTHON = BASE_DIR / ".venv" / "bin" / "python"
-
-TASK_TO_SCRIPT = {
-    "verify_session": "verify_session.py",
-    "create_list": "create_list.py",
-    "collect_feeds": "collect_feeds.py",
-    "collect_relationships": "collect_relationships.py",
-    "pull_avatars": "pull_avatars.py",
-    "follow_accounts": "follow_accounts.py",
-    "manage_list": "manage_list.py",
-    "vet_candidate": "vet_candidate.py",
-    "scrape_list_members": "scrape_list_members.py",
-    "scrape_list_counts": "scrape_list_counts.py",
-    "scrape_following": "scrape_following.py",
-}
 
 
 def _resolve_node_bin() -> str:
@@ -51,37 +39,8 @@ def _resolve_node_bin() -> str:
     raise RuntimeError("Could not locate node binary")
 
 
-def _script_for(task_type: str) -> str:
-    script = TASK_TO_SCRIPT.get(task_type)
-    if not script:
-        raise ValueError(f"Unsupported deterministic task type: {task_type}")
-    return script
-
-
-def _output_file_for(task_type: str) -> Path:
-    if task_type == "verify_session":
-        return OUT_DIR / "verify_session.json"
-    if task_type == "create_list":
-        return OUT_DIR / "create_list.json"
-    if task_type == "collect_feeds":
-        return OUT_DIR / "collect_feeds.json"
-    if task_type == "collect_relationships":
-        return OUT_DIR / "collect_relationships.json"
-    if task_type == "pull_avatars":
-        return OUT_DIR / "pull_avatars.json"
-    if task_type == "follow_accounts":
-        return OUT_DIR / "follow_accounts.json"
-    if task_type == "manage_list":
-        return OUT_DIR / "manage_list.json"
-    if task_type == "vet_candidate":
-        return OUT_DIR / "vet_candidate.json"
-    if task_type == "scrape_list_members":
-        return OUT_DIR / "scrape_list_members.json"
-    if task_type == "scrape_list_counts":
-        return OUT_DIR / "scrape_list_counts.json"
-    if task_type == "scrape_following":
-        return OUT_DIR / "scrape_following.json"
-    raise ValueError(f"No output file mapping for task type: {task_type}")
+def _resolve_output_file(task_type: str) -> Path:
+    return OUT_DIR / output_file_for(task_type)
 
 
 def _build_env(task: dict) -> dict[str, str]:
@@ -155,6 +114,8 @@ def _build_env(task: dict) -> dict[str, str]:
             env["X_MANAGE_LIST_SESSION_TIMEOUT"] = str(params["session_timeout"])
         if params.get("force_add"):
             env["X_MANAGE_LIST_FORCE_ADD"] = "1"
+        if params.get("debug_dialog"):
+            env["X_MANAGE_LIST_DEBUG_DIALOG"] = "1"
     elif task_type == "vet_candidate":
         env["X_VET_HANDLES_JSON"] = json.dumps(params.get("handles", []))
         env["X_VET_MAX_SCROLLS"] = str(params.get("max_scrolls", 6))
@@ -172,12 +133,8 @@ def _build_env(task: dict) -> dict[str, str]:
             env["X_SCRAPE_MAX_SCROLLS"] = str(params["max_scrolls"])
         if "session_timeout" in params:
             env["X_SCRAPE_SESSION_TIMEOUT"] = str(params["session_timeout"])
-    elif task_type == "scrape_list_counts":
-        env["X_ACCOUNT_HANDLE"] = str(params.get("account_handle", ""))
-        if params.get("list_urls"):
-            env["X_LIST_URLS_JSON"] = json.dumps(params["list_urls"])
-        if "session_timeout" in params:
-            env["X_SCRAPE_SESSION_TIMEOUT"] = str(params["session_timeout"])
+    elif task_type == "debug_list_dialog":
+        env["X_DEBUG_HANDLE"] = str(params.get("handle", "bbands"))
     elif task_type == "scrape_following":
         env["X_FOLLOWING_ACCOUNT"] = str(params.get("account", ""))
         if "max_scrolls" in params:
@@ -191,8 +148,8 @@ def _build_env(task: dict) -> dict[str, str]:
 async def run_task(task: dict) -> dict:
     """Execute a supported task by attaching Playwright to host Google Chrome over CDP."""
     task_type = task["type"]
-    script = _script_for(task_type)
-    output_file = _output_file_for(task_type)
+    script = script_for(task_type)
+    output_file = _resolve_output_file(task_type)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     STATE_DIR.mkdir(parents=True, exist_ok=True)

@@ -32,10 +32,13 @@ def load_seen_ids() -> set[str]:
 def save_seen_ids(seen_ids: set[str]) -> None:
     if not SEEN_IDS_FILE:
         return
-    SEEN_IDS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    SEEN_IDS_FILE.write_text(
-        json.dumps({"tweet_ids": sorted(seen_ids), "last_updated": asyncio.get_event_loop().time()}, indent=2)
-    )
+    try:
+        SEEN_IDS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        SEEN_IDS_FILE.write_text(
+            json.dumps({"tweet_ids": sorted(seen_ids), "last_updated": asyncio.get_event_loop().time()}, indent=2)
+        )
+    except PermissionError:
+        print(f"WARNING: Cannot write seen IDs to {SEEN_IDS_FILE} (permission denied)", flush=True)
 
 
 def is_empty_or_missing(body: str) -> bool:
