@@ -25,7 +25,7 @@ TASKS: dict[str, dict] = {
     },
     "search_research": {
         "type": "read-only",
-        "script": "search_research.js",
+        "script": "search_research.py",
         "output": "search_research.json",
     },
     "pull_avatars": {
