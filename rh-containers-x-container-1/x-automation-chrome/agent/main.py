@@ -15,7 +15,10 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from agent.task_registry import READ_ONLY_TASKS, MUTATING_TASKS, ALL_TASKS
+try:
+    from agent.task_registry import READ_ONLY_TASKS, MUTATING_TASKS, ALL_TASKS
+except ImportError:
+    from task_registry import READ_ONLY_TASKS, MUTATING_TASKS, ALL_TASKS
 
 TASKS_DIR = Path(__file__).resolve().parent.parent / "tasks"
 PENDING = TASKS_DIR / "pending"
