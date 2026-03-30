@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 
-from mcp_browser import ChromeMCPBrowser, looks_logged_in
+from mcp_browser import ChromeMCPBrowser, looks_challenged, looks_logged_in, looks_rate_limited
 from shared import OUT_DIR, write_json, resolve_browser_url
 
 
@@ -16,10 +16,11 @@ async def main() -> None:
             await browser.navigate("https://x.com/home")
             await browser.wait_for_text(["For you", "Following", "Sign in to X"], timeout=20000)
             payload = await browser.get_page_payload(1600)
+            body = payload["text"]
             result["url"] = payload["url"]
             result["title"] = payload["title"]
-            result["logged_in"] = looks_logged_in(payload["text"])
-            result["excerpt"] = payload["text"]
+            result["logged_in"] = looks_logged_in(body)
+            result["excerpt"] = body
             result["account_handle"] = await browser.evaluate(
                 """() => {
                     const extractHandle = (href) => {
@@ -51,6 +52,12 @@ async def main() -> None:
                     return null;
                 }"""
             )
+            if looks_rate_limited(body, payload.get("url", "")):
+                result["error"] = "rate-limited"
+            elif looks_challenged(body):
+                result["error"] = "challenge-required"
+            elif not result["logged_in"]:
+                result["error"] = "session-not-authenticated"
             result["status"] = "ok"
             result["evidence"] = {
                 "screenshot_path": str(OUT_DIR / "verify_session.png"),
