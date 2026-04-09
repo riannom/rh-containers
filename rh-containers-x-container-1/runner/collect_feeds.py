@@ -5,6 +5,8 @@ import json
 import os
 import random
 import re
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from mcp_browser import ChromeMCPBrowser, looks_logged_in, scroll_and_collect
@@ -12,12 +14,33 @@ from shared import OUT_DIR, write_json, resolve_browser_url
 
 
 SEEN_IDS_FILE = Path(os.environ["X_SEEN_IDS_FILE"]) if os.environ.get("X_SEEN_IDS_FILE") else None
+TWITTER_EPOCH_MS = 1288834974657
+SEEN_TTL_DAYS = 7
+HWM_FILE = Path(os.environ["X_HIGH_WATER_MARKS_FILE"]) if os.environ.get("X_HIGH_WATER_MARKS_FILE") else (
+    SEEN_IDS_FILE.parent / "high_water_marks.json" if SEEN_IDS_FILE else None
+)
 LIST_URLS = json.loads(os.environ.get("X_LIST_URLS_JSON", "[]"))
 LIST_LABELS = json.loads(os.environ.get("X_LIST_LABELS_JSON", "[]"))
 COLLECT_FEED = os.environ.get("X_COLLECT_FEED") == "1"
 MAX_SCROLLS = int(os.environ.get("X_MAX_SCROLLS", "8"))
 MAX_SCROLLS_MIN = int(os.environ.get("X_MAX_SCROLLS_MIN", str(MAX_SCROLLS)))
 MAX_SCROLLS_MAX = int(os.environ.get("X_MAX_SCROLLS_MAX", str(MAX_SCROLLS)))
+
+
+def snowflake_timestamp_ms(tweet_id: str) -> int:
+    return (int(tweet_id) >> 22) + TWITTER_EPOCH_MS
+
+
+def prune_seen_ids(seen_ids: set[str], ttl_days: int = SEEN_TTL_DAYS) -> set[str]:
+    cutoff_ms = (time.time() * 1000) - (ttl_days * 86400 * 1000)
+    pruned = set()
+    for tid in seen_ids:
+        try:
+            if snowflake_timestamp_ms(tid) >= cutoff_ms:
+                pruned.add(tid)
+        except (ValueError, OverflowError):
+            pruned.add(tid)
+    return pruned
 
 
 def load_seen_ids() -> set[str]:
@@ -33,12 +56,49 @@ def save_seen_ids(seen_ids: set[str]) -> None:
     if not SEEN_IDS_FILE:
         return
     try:
+        pruned = prune_seen_ids(seen_ids)
         SEEN_IDS_FILE.parent.mkdir(parents=True, exist_ok=True)
         SEEN_IDS_FILE.write_text(
-            json.dumps({"tweet_ids": sorted(seen_ids), "last_updated": asyncio.get_event_loop().time()}, indent=2)
+            json.dumps({"tweet_ids": sorted(pruned), "last_updated": datetime.now(timezone.utc).isoformat()}, indent=2)
         )
     except PermissionError:
         print(f"WARNING: Cannot write seen IDs to {SEEN_IDS_FILE} (permission denied)", flush=True)
+
+
+def load_high_water_marks() -> dict[str, str]:
+    if not HWM_FILE or not HWM_FILE.exists():
+        return {}
+    try:
+        return json.loads(HWM_FILE.read_text()).get("marks", {})
+    except Exception:
+        return {}
+
+
+def save_high_water_marks(marks: dict[str, str]) -> None:
+    if not HWM_FILE:
+        return
+    try:
+        HWM_FILE.parent.mkdir(parents=True, exist_ok=True)
+        HWM_FILE.write_text(json.dumps({
+            "marks": marks,
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+        }, indent=2))
+    except PermissionError:
+        print(f"WARNING: Cannot write high-water marks to {HWM_FILE}", flush=True)
+
+
+def update_high_water_mark(marks: dict[str, str], label: str, posts: list[dict]) -> None:
+    max_id = marks.get(label, "0")
+    for post in posts:
+        tid = post.get("tweet_id")
+        if tid:
+            try:
+                if int(tid) > int(max_id):
+                    max_id = tid
+            except (ValueError, TypeError):
+                pass
+    if max_id != "0":
+        marks[label] = max_id
 
 
 def is_empty_or_missing(body: str) -> bool:
@@ -66,7 +126,7 @@ def choose_scroll_budget() -> int:
     return random.randint(low, high)
 
 
-async def collect_source(browser: ChromeMCPBrowser, label: str, url: str, seen_ids: set[str]) -> dict:
+async def collect_source(browser: ChromeMCPBrowser, label: str, url: str, seen_ids: set[str], hwm: dict[str, str] | None = None) -> dict:
     source = {"label": label, "url": url, "status": "unknown", "posts": [], "profiles": []}
     last_error = None
     scroll_budget = choose_scroll_budget()
@@ -88,6 +148,7 @@ async def collect_source(browser: ChromeMCPBrowser, label: str, url: str, seen_i
                 seen_tweet_ids=seen_ids,
                 max_scrolls=scroll_budget,
                 posts_per_scroll=20,
+                since_id=(hwm or {}).get(label),
             )
             for post in posts:
                 post["collection_method"] = "list"
@@ -132,6 +193,7 @@ async def main() -> None:
     }
     browser_url = resolve_browser_url()
     seen_ids = load_seen_ids()
+    hwm = load_high_water_marks()
 
     try:
         async with ChromeMCPBrowser(browser_url) as browser:
@@ -148,9 +210,10 @@ async def main() -> None:
             for idx, list_url in enumerate(LIST_URLS):
                 label = LIST_LABELS[idx] if idx < len(LIST_LABELS) else f"list-{idx}"
                 try:
-                    source = await collect_source(browser, label, list_url, seen_ids)
+                    source = await collect_source(browser, label, list_url, seen_ids, hwm)
                 except Exception as error:
                     source = {"label": label, "url": list_url, "status": "error", "error": str(error), "posts": []}
+                update_high_water_mark(hwm, label, source.get("posts", []))
                 result["sources"].append(source)
                 result["total_posts"] += source.get("post_count", 0)
                 if idx < len(LIST_URLS) - 1:
@@ -169,6 +232,7 @@ async def main() -> None:
                         seen_tweet_ids=seen_ids,
                         max_scrolls=source["max_scrolls_used"],
                         posts_per_scroll=20,
+                        since_id=hwm.get("following-feed"),
                     )
                     for post in posts:
                         post["collection_method"] = "feed"
@@ -179,6 +243,7 @@ async def main() -> None:
                     source["profiles"] = collect_profiles_from_posts(posts)
                     source["post_count"] = len(posts)
                     source["status"] = "ok"
+                    update_high_water_mark(hwm, "following-feed", posts)
                 except Exception as error:
                     source["status"] = "error"
                     source["error"] = str(error)
@@ -186,6 +251,7 @@ async def main() -> None:
                 result["total_posts"] += source.get("post_count", 0)
 
             save_seen_ids(seen_ids)
+            save_high_water_marks(hwm)
             result["status"] = "ok"
             result["evidence"] = {
                 "screenshot_path": str(OUT_DIR / "collect_feeds_final.png"),

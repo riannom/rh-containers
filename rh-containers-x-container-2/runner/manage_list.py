@@ -8,18 +8,38 @@ import traceback
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from mcp_browser import ChromeMCPBrowser, looks_challenged, looks_logged_in, looks_rate_limited, jitter
+from mcp_browser import (
+    ChromeMCPBrowser,
+    looks_challenged,
+    looks_logged_in,
+    looks_rate_limited,
+    jitter,
+)
 from shared import OUT_DIR, write_json, resolve_browser_url
 
 
-STATE_DIR = Path(os.environ.get("X_AUTOMATION_STATE_DIR", Path(__file__).resolve().parent.parent / "state"))
+STATE_DIR = Path(
+    os.environ.get(
+        "X_AUTOMATION_STATE_DIR", Path(__file__).resolve().parent.parent / "state"
+    )
+)
 LIST_URL = os.environ.get("X_LIST_URL", "")
 ADD = json.loads(os.environ.get("X_LIST_ADD_JSON", "[]"))
 REMOVE = json.loads(os.environ.get("X_LIST_REMOVE_JSON", "[]"))
 PRIVATE_RETRY_DAYS = int(os.environ.get("X_PRIVATE_RETRY_DAYS", "7"))
-FORCE_ADD = os.environ.get("X_MANAGE_LIST_FORCE_ADD", "").lower() in ("1", "true", "yes")
-DEBUG_DIALOG = os.environ.get("X_MANAGE_LIST_DEBUG_DIALOG", "").lower() in ("1", "true", "yes")
-PER_HANDLE_TIMEOUT_SECONDS = int(os.environ.get("X_MANAGE_LIST_PER_HANDLE_TIMEOUT", "75"))
+FORCE_ADD = os.environ.get("X_MANAGE_LIST_FORCE_ADD", "").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+DEBUG_DIALOG = os.environ.get("X_MANAGE_LIST_DEBUG_DIALOG", "").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+PER_HANDLE_TIMEOUT_SECONDS = int(
+    os.environ.get("X_MANAGE_LIST_PER_HANDLE_TIMEOUT", "75")
+)
 SESSION_TIMEOUT_SECONDS = int(os.environ.get("X_MANAGE_LIST_SESSION_TIMEOUT", "240"))
 PROFILE_WAIT_TIMEOUT_MS = int(
     os.environ.get(
@@ -164,7 +184,9 @@ async def add_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) -> 
                 return item
             item["status"] = "no-list-option"
             return item
-    await browser.wait_for_text([list_name, "Pick a List"], timeout=LIST_WAIT_TIMEOUT_MS)
+    await browser.wait_for_text(
+        [list_name, "Pick a List"], timeout=LIST_WAIT_TIMEOUT_MS
+    )
     await browser.sleep(jitter(1200, 400))
 
     if DEBUG_DIALOG:
@@ -185,7 +207,22 @@ async def add_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) -> 
             });
         }""")
         snapshot = await browser.take_a11y_snapshot()
-        snapshot_lines = [l for l in snapshot.split("\n") if any(k in l.lower() for k in ["check", "list", "save", "tier", "macro", "tactical", "option"])]
+        snapshot_lines = [
+            l
+            for l in snapshot.split("\n")
+            if any(
+                k in l.lower()
+                for k in [
+                    "check",
+                    "list",
+                    "save",
+                    "tier",
+                    "macro",
+                    "tactical",
+                    "option",
+                ]
+            )
+        ]
         item["debug_checkboxes"] = checkboxes if isinstance(checkboxes, list) else []
         item["debug_snapshot"] = snapshot_lines[:20]
 
@@ -213,7 +250,10 @@ async def add_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) -> 
         await browser.sleep(jitter(1500, 500))
         # Check if Save is enabled — if still disabled, checkbox click didn't register
         snapshot = await browser.take_a11y_snapshot()
-        save_disabled = any("save" in line.lower() and "disabled" in line.lower() for line in snapshot.split("\n"))
+        save_disabled = any(
+            "save" in line.lower() and "disabled" in line.lower()
+            for line in snapshot.split("\n")
+        )
         if save_disabled:
             dialog_payload = await browser.get_page_payload(1500)
             body = dialog_payload.get("text", "")
@@ -252,11 +292,15 @@ async def add_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) -> 
             return item
         post_state = await browser.get_list_membership_state(list_name)
         item["post_save_membership_state"] = post_state
-        if post_state != "selected":
+        if post_state == "selected":
+            item["status"] = "verified-added"
+        elif post_state == "list-not-found-in-dialog":
+            # Dialog closed after Save — X closes the dialog on success
+            item["status"] = "verified-added"
+        else:
             item["status"] = "list-mutation-denied"
             item["mutation_denied"] = True
             return item
-        item["status"] = "verified-added"
     await browser.close_dialog()
     await browser.sleep(jitter(700, 300))
 
@@ -264,7 +308,9 @@ async def add_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) -> 
     if item["status"] in ("verified-added", "already-member"):
         try:
             follow_status = await browser.click_follow_button()
-            item["followed"] = follow_status  # "clicked-follow", "already-following", or "not-found"
+            item["followed"] = (
+                follow_status  # "clicked-follow", "already-following", or "not-found"
+            )
             if follow_status == "clicked-follow":
                 await browser.sleep(jitter(1000, 400))
         except Exception:
@@ -302,7 +348,9 @@ async def remove_handle(browser: ChromeMCPBrowser, handle: str, list_name: str) 
         if not await browser.click_menu_item_matching(r"Add/remove.*Lists|Lists"):
             item["status"] = "no-list-option"
             return item
-    await browser.wait_for_text([list_name, "Pick a List"], timeout=LIST_WAIT_TIMEOUT_MS)
+    await browser.wait_for_text(
+        [list_name, "Pick a List"], timeout=LIST_WAIT_TIMEOUT_MS
+    )
     await browser.sleep(jitter(1200, 400))
 
     # Find checkbox — trusted clicks required for React onChange
@@ -348,7 +396,9 @@ async def main() -> None:
     try:
         async with ChromeMCPBrowser(browser_url) as browser:
             await browser.navigate("https://x.com/home")
-            await browser.wait_for_text(["For you", "Following", "Sign in to X"], timeout=20000)
+            await browser.wait_for_text(
+                ["For you", "Following", "Sign in to X"], timeout=20000
+            )
             home = await browser.get_page_payload(3000)
             if looks_rate_limited(home["text"], home.get("url", "")):
                 result["status"] = "error"
@@ -378,7 +428,9 @@ async def main() -> None:
                 return
 
             await browser.navigate(LIST_URL)
-            await browser.wait_for_text(["Edit List", "Waiting for posts", "Members"], timeout=20000)
+            await browser.wait_for_text(
+                ["Edit List", "Waiting for posts", "Members"], timeout=20000
+            )
             list_payload = await browser.get_page_payload(2500)
             if looks_rate_limited(list_payload["text"], list_payload.get("url", "")):
                 result["status"] = "error"
@@ -395,7 +447,11 @@ async def main() -> None:
                 write_json("manage_list.json", result)
                 print(json.dumps(result))
                 return
-            list_name = os.environ.get("X_LIST_NAME_OVERRIDE") or resolve_list_name(LIST_URL) or await browser.get_list_title()
+            list_name = (
+                os.environ.get("X_LIST_NAME_OVERRIDE")
+                or resolve_list_name(LIST_URL)
+                or await browser.get_list_title()
+            )
             if not list_name:
                 result["status"] = "error"
                 result["error"] = "could-not-resolve-list-name"
@@ -408,11 +464,17 @@ async def main() -> None:
 
             for handle in ADD:
                 try:
-                    item = await asyncio.wait_for(add_handle(browser, handle, list_name), timeout=PER_HANDLE_TIMEOUT_SECONDS)
+                    item = await asyncio.wait_for(
+                        add_handle(browser, handle, list_name),
+                        timeout=PER_HANDLE_TIMEOUT_SECONDS,
+                    )
                 except Exception as error:
                     item = {"handle": handle, "status": "error", "error": str(error)}
                     try:
-                        await browser.screenshot(str(OUT_DIR / f"manage_list_error_{handle}.png"), full_page=True)
+                        await browser.screenshot(
+                            str(OUT_DIR / f"manage_list_error_{handle}.png"),
+                            full_page=True,
+                        )
                     except Exception:
                         pass
                 if item["status"] in ("verified-added", "already-member"):
@@ -451,11 +513,21 @@ async def main() -> None:
             if result.get("status") != "error" and REMOVE:
                 for handle in REMOVE:
                     try:
-                        item = await asyncio.wait_for(remove_handle(browser, handle, list_name), timeout=PER_HANDLE_TIMEOUT_SECONDS)
+                        item = await asyncio.wait_for(
+                            remove_handle(browser, handle, list_name),
+                            timeout=PER_HANDLE_TIMEOUT_SECONDS,
+                        )
                     except Exception as error:
-                        item = {"handle": handle, "status": "error", "error": str(error)}
+                        item = {
+                            "handle": handle,
+                            "status": "error",
+                            "error": str(error),
+                        }
                         try:
-                            await browser.screenshot(str(OUT_DIR / f"manage_list_remove_error_{handle}.png"), full_page=True)
+                            await browser.screenshot(
+                                str(OUT_DIR / f"manage_list_remove_error_{handle}.png"),
+                                full_page=True,
+                            )
                         except Exception:
                             pass
                     if item["status"] in ("verified-removed", "not-member"):
@@ -475,7 +547,9 @@ async def main() -> None:
 
             result.setdefault("status", "ok")
             result["evidence"] = {"screenshot_path": str(OUT_DIR / "manage_list.png")}
-            await browser.screenshot(result["evidence"]["screenshot_path"], full_page=True)
+            await browser.screenshot(
+                result["evidence"]["screenshot_path"], full_page=True
+            )
     except Exception as error:
         result["status"] = "error"
         result["error"] = str(error)
@@ -489,6 +563,10 @@ if __name__ == "__main__":
     try:
         asyncio.run(asyncio.wait_for(main(), timeout=SESSION_TIMEOUT_SECONDS))
     except TimeoutError:
-        payload = {"status": "error", "task_type": "manage_list", "error": f"session-timeout-{SESSION_TIMEOUT_SECONDS}s"}
+        payload = {
+            "status": "error",
+            "task_type": "manage_list",
+            "error": f"session-timeout-{SESSION_TIMEOUT_SECONDS}s",
+        }
         write_json("manage_list.json", payload)
         print(json.dumps(payload))

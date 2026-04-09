@@ -740,14 +740,28 @@ class ChromeMCPBrowser:
                     const profileHref = links.find((href) => /^\\/[A-Za-z0-9_]+$/.test(href));
                     const handle = profileHref ? profileHref.slice(1) : null;
                     const avatar = card.querySelector('img[src*="profile_images"]');
-                    const spans = Array.from(card.querySelectorAll('span'))
-                        .map((node) => node.textContent?.trim())
-                        .filter(Boolean);
+                    let display_name = null;
+                    if (profileHref) {{
+                        const profileLink = Array.from(card.querySelectorAll('a[href]'))
+                            .find((link) => link.getAttribute('href') === profileHref);
+                        if (profileLink) {{
+                            const linkSpans = Array.from(profileLink.querySelectorAll('span'))
+                                .map((node) => (node.textContent || '').trim())
+                                .filter((text) => text && !text.startsWith('@') && text !== '·');
+                            display_name = linkSpans[0] || null;
+                        }}
+                    }}
+                    if (!display_name) {{
+                        const spans = Array.from(card.querySelectorAll('span'))
+                            .map((node) => node.textContent?.trim())
+                            .filter(Boolean);
+                        display_name = spans.find((text) => !text.startsWith('@') && text !== '·') || null;
+                    }}
                     const description = card.innerText || '';
                     return {{
                         edge_type: {json.dumps(edge_type)},
                         handle,
-                        display_name: spans[0] || null,
+                        display_name,
                         verified: !!card.querySelector('[data-testid="icon-verified"]'),
                         bio_excerpt: description.slice(0, 240),
                         profile_path: profileHref,
@@ -885,11 +899,14 @@ async def scroll_and_collect(
     seen_tweet_ids: set[str] | None = None,
     max_scrolls: int = 8,
     posts_per_scroll: int = 20,
+    since_id: str | None = None,
+    stale_streak_limit: int = 5,
 ) -> list[dict[str, Any]]:
     seen_tweet_ids = seen_tweet_ids or set()
     collected: list[dict[str, Any]] = []
     local_seen = set(seen_tweet_ids)
     consecutive_empty = 0
+    stale_streak = 0
 
     for _ in range(max_scrolls):
         posts = await browser.collect_visible_posts(posts_per_scroll)
@@ -903,12 +920,24 @@ async def scroll_and_collect(
             collected.append(post)
             new_count += 1
 
+            if since_id and tweet_id:
+                try:
+                    if int(tweet_id) <= int(since_id):
+                        stale_streak += 1
+                    else:
+                        stale_streak = 0
+                except (ValueError, TypeError):
+                    pass
+
         if new_count == 0:
             consecutive_empty += 1
             if consecutive_empty >= 2:
                 break
         else:
             consecutive_empty = 0
+
+        if since_id and stale_streak >= stale_streak_limit:
+            break
 
         await browser.scroll_page()
 

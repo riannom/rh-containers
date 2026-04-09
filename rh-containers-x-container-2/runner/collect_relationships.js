@@ -77,12 +77,28 @@ async function scrapeConnections(page, url, edgeType) {
           .filter(Boolean);
         const profileHref = links.find((href) => /^\/[A-Za-z0-9_]+$/.test(href));
         const handle = profileHref ? profileHref.slice(1) : null;
-        const spans = Array.from(card.querySelectorAll('span')).map((node) => node.textContent?.trim()).filter(Boolean);
+        // Extract display name from the profile link element, not from arbitrary spans.
+        // The display name lives inside the <a href="/{handle}"> link within the card.
+        let display_name = null;
+        if (profileHref) {
+          const profileLink = Array.from(card.querySelectorAll('a[href]'))
+            .find((link) => link.getAttribute('href') === profileHref);
+          if (profileLink) {
+            const linkSpans = Array.from(profileLink.querySelectorAll('span'))
+              .map((node) => (node.textContent || '').trim())
+              .filter((text) => text && !text.startsWith('@') && text !== '·');
+            display_name = linkSpans[0] || null;
+          }
+        }
+        if (!display_name) {
+          const spans = Array.from(card.querySelectorAll('span')).map((node) => node.textContent?.trim()).filter(Boolean);
+          display_name = spans.find((text) => !text.startsWith('@') && text !== '·') || null;
+        }
         const description = card.innerText || '';
         return {
           edge_type: edgeKind,
           handle,
-          display_name: spans[0] || null,
+          display_name,
           verified: !!card.querySelector('[data-testid="icon-verified"]'),
           bio_excerpt: description.slice(0, 240),
           profile_path: profileHref,
